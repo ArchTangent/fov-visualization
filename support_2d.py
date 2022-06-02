@@ -17,6 +17,7 @@ def orthogonal_distance(p1: Point2d, p2: Point2d) -> int:
 
     return abs(dx) + abs(dy)
 
+
 def test_chessboard_distance():
     suite = [
         ((0, 0), (0, 0), 0),
