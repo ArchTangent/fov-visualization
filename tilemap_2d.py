@@ -18,8 +18,16 @@ class TileId:
         return Point2d(x, y)
 
     def in_bounds(self, num_tiles) -> bool:
-        """Returns `True` if Tile ID is in bounds based on # of tiles in tilemap."""
-        return 0 < self.val < num_tiles
+        """Returns `True` if Tile ID is a valid index in the tilemap.
+        
+        Note: this doesn't necessarily mean that the index is within the (x,y)
+        bounds of the tilemap.  
+        
+        Ex: (-1,5) in a 10x10 tilemap would be TileId(49),
+        which is a valid index, but *not* within the (x,y) bounds.
+        """
+        return -1 < self.val < num_tiles
+
 
 @dataclass
 class Point2d:
@@ -170,17 +178,15 @@ def test_tile_in_bounds():
     xdims, ydims = (10, 10)
     num_tiles = xdims * ydims
     suite = [
-        # TODO: fix negative numbers:  need to be OOB (-5,1) -> tile 49 which
-        # TODO:      is in bounds, but shouldn't be!
-        (-1,5), (5,-1), (10,5), (5,10), (20,0), 
-        (0,0), (1,0), (0,1), (9,1), (1,9)
+        -11, -10, -1, 100, 101,
+        0, 5, 50, 75, 99 
     ]
     results = [
         False, False, False, False, False,
         True, True, True, True, True 
     ]
-    for xy, expected in zip(suite, results):
-        tile_id = Point2d(*xy).to_tile_id(xdims)
+    for tile_ix, expected in zip(suite, results):
+        tile_id = TileId(tile_ix)
         assert tile_id.in_bounds(num_tiles) == expected        
 
 if __name__ == "__main__":
