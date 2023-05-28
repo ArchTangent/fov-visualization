@@ -27,7 +27,7 @@ class Unit:
 
 
 class TileMap:
-    """2D tilemap, taking dictionary of blocked (x,y) coordinates."""
+    """2D tilemap, taking a dictionary of blocked (x,y) coordinates."""
 
     def __init__(self, xdims: int, ydims: int, blocked: set[Tuple[int, int]]):
         self.xdims = xdims

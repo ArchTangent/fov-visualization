@@ -223,9 +223,9 @@ def to_tile_id(x: int, y: int, xdims: int):
     Parameters
     ---
     `x, y` : int
-        (x,y) coordinates of the cell
+        (x,y) coordinates of the tile.
     `xdims` : int
-        shift value for y dimension.  Equal to number of x dimensions in the map
+        number of x dimensions.
     """
     return x + y * xdims
 
