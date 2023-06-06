@@ -9,11 +9,9 @@ def bresenham(
 
     All lines should be reciprocal. Uses 1000 for granularity `g`."""
     result = [(x1, y1, z1)]
+    
     # Deltas
     dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
-    if dx == 0 and dy == 0 and dz == 0:
-        return result
-
     abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
 
     # Sign, increment, and cell distance
@@ -30,6 +28,9 @@ def bresenham(
     match abs_dy > abs_dx, abs_dz > abs_dy, abs_dz > abs_dx:
         case False, _, False:
             # X Axis dominant
+            if dx == 0:
+                return result
+
             dydx = int(dy / abs_dx * 1000)
             dzdx = int(dz / abs_dx * 1000)
 
@@ -59,6 +60,9 @@ def bresenham(
 
         case True, False, _:
             # Y Axis dominant
+            if dy == 0:
+                return result
+
             dxdy = int(dx / abs_dy * 1000)
             dzdy = int(dz / abs_dy * 1000)
             x_dist = 500
@@ -87,6 +91,9 @@ def bresenham(
 
         case _:
             # Z Axis dominant
+            if dz == 0:
+                return result
+
             dxdz = int(dx / abs_dz * 1000)
             dydz = int(dy / abs_dz * 1000)
             x_dist = 500
@@ -200,10 +207,7 @@ def bresenham_full(
     result = [(x1, y1, z1)]
 
     # Deltas
-    dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
-    if dx == 0 and dy == 0 and dz == 0:
-        return result
-
+    dx, dy, dz = x2 - x1, y2 - y1, z2 - z1   
     abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
 
     # Sign, increment, and tile distance
@@ -222,6 +226,9 @@ def bresenham_full(
     match abs_dy > abs_dx, abs_dz > abs_dy, abs_dz > abs_dx:
         case False, _, False:
             # X Axis dominant
+            if dx == 0:
+                return result
+
             dydx = int(abs_dy / abs_dx * 1000)
             dzdx = int(abs_dz / abs_dx * 1000)
             dydx_edge = dydx // 2
@@ -262,6 +269,9 @@ def bresenham_full(
 
         case True, False, _:
             # Y Axis dominant
+            if dy == 0:
+                return result
+
             dxdy = int(abs_dx / abs_dy * 1000)
             dzdy = int(abs_dz / abs_dy * 1000)
             dxdy_edge = dxdy // 2
@@ -302,6 +312,9 @@ def bresenham_full(
 
         case _:
             # Z Axis dominant
+            if dz == 0:
+                return result
+
             dxdz = int(abs_dx / abs_dz * 1000)
             dydz = int(abs_dy / abs_dz * 1000)
             dxdz_edge = dxdz // 2
