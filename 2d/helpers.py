@@ -1,14 +1,33 @@
 """2D Helper functions and classes for FOV Visualization."""
+from dataclasses import dataclass
 from enum import Enum
 from typing import Tuple
 
+@dataclass
+class Coords:
+    """2D map integer coordinates."""
 
-class QBits(Enum):
-    """Number of Q bits used for quantized slopes and angle ranges."""
+    __slots__ = "x", "y"
 
-    Q64 = 1  # Least granular
-    Q128 = 2
-    Q256 = 3  # Most granular
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+    def __iter__(self):
+        return iter((self.x, self.y))
+
+    def __repr__(self) -> str:
+        return f"{self.x, self.y}"
+
+    def as_tuple(self):
+        return (self.x, self.y)
+
+
+class FovLineType(Enum):
+    """Determines whether bresenham or bresenham_full line is chosen."""
+
+    NORMAL = 1
+    FULL = 2
 
 
 class Octant(Enum):
@@ -23,9 +42,53 @@ class Octant(Enum):
     O7 = 7
     O8 = 8
 
+
+class QBits(Enum):
+    """Number of Q bits used for quantized slopes and angle ranges."""
+
+    Q64 = 1  # Least granular
+    Q128 = 2
+    Q256 = 3  # Most granular
+
+
+def boundary_radii(
+    ox: int, oy: int, xdims: int, ydims: int, octant: Octant, radius: int
+) -> Tuple[int, int]:
+    """Get the maximum FOV radius to the primary and secondary boundary.
+
+    Octants are counted from 1 to 8, starting ENE and counting up in CCW fashion.
+    """
+    match octant:
+        case Octant.O1:
+            return min(xdims - ox - 1, radius), min(ydims - oy - 1, radius)
+        case Octant.O2:
+            return min(ydims - oy - 1, radius), min(xdims - ox - 1, radius)
+        case Octant.O3:
+            return min(ydims - oy - 1, radius), min(ox, radius)
+        case Octant.O4:
+            return min(ox, radius), min(ydims - oy - 1, radius)
+        case Octant.O5:
+            return min(ox, radius), min(oy, radius)
+        case Octant.O6:
+            return min(oy, radius), min(ox, radius)
+        case Octant.O7:
+            return min(oy, radius), min(xdims - ox - 1, radius)
+        case Octant.O8:
+            return min(xdims - ox - 1, radius), min(oy, radius)
+        
+
 def cells_per_octant(fov: int) -> int:
     """Number of fov_cells in an octant for FOV purposes."""
     return sum(x for x in range(fov + 2))
+
+
+def max_fovtile_index(radius: int) -> int:
+    """Returns maximum FOV Octant index for given radius.
+
+    Assumes that TID 0 (index 0) is always visible and that FovTile iteration
+    in earnest starts from TID 1 (index 1)
+    """
+    return sum(n + 1 for n in range(1, radius + 1))
 
 
 def octant_transform(x: int, y: int, a: Octant, b: Octant) -> Tuple[int, int]:

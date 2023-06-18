@@ -6,7 +6,7 @@ def bresenham(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
     """Breshenham's line algorithm - 2D version."""
     result = [(x1, y1)]
 
-    dx, dy = abs(x2 - x1), abs(y2 - y1)       
+    dx, dy = abs(x2 - x1), abs(y2 - y1)
     x_inc, y_inc = 1, 1
     x, y = x1, y1
 
