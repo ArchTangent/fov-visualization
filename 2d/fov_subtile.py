@@ -1,4 +1,12 @@
-"""2023 JUN - 2D Subtile FOV Testing."""
+"""2D FOV Visualization - Subtile Method. 
+
+Key Ideas:
+- Tiles are broken up into subgrids of (x*x) subtiles, e.g. 4x4 = 16 subtiles.
+- As # of subtiles go up, FOV granularity and generation time go up. 4 is a good value.
+- FOV is divided into 8 parts called octants (not to be confused with geometric term).
+- Uses bresenham lines comprised of subtiles to determine which tile are visible.
+- There are 64FOV angle ranges are quantized into 64, 128, or 256 subdivisions.
+"""
 import math
 import pygame, pygame.freetype
 from pygame import Vector2
@@ -36,12 +44,8 @@ class Settings:
         fov_line_type: FovLineType=FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
-        # fov_line_color="steelblue3",
-        # fov_line_trim_color="steelblue4",
         fov_line_color="slateblue1",
         fov_line_trim_color="slateblue3",
-        # wall_color="gray60",
-        # wall_trim_color="gray30",
         wall_color="seagreen3",
         wall_trim_color="seagreen4",
         structure_color="seagreen3",
@@ -226,7 +230,6 @@ class FovLines:
         for r in range(radius + 1):
             sec = start + r * subtiles_xy
             tgt = octant_transform(pri, sec, Octant.O1, octant)
-            # print(f"FovLine {octant} radius {r}: from {src} to {tgt}")
             line_list = {c for c in  line_func(*src, *tgt)}
             self.lines.append(line_list)
             
@@ -291,8 +294,7 @@ class FovTile:
 
     def __repr__(self) -> str:
         return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), ref: {self.ref_x, self.ref_y}, wall N/W: {bin(self.wall_n_bits)}/{bin(self.wall_w_bits)}"
-        # return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), blk: {self.blocking_bit_lo}-{self.blocking_bit_hi}, vis: {self.visible_bit_lo}-{self.visible_bit_hi}"
-
+       
     def reference_coords(self, rx: int, ry: int, subtiles_xy: int, octant: Octant) -> Tuple[int, int]:
         """Get (x,y) subtile reference coordinates based on octant, relative to origin.
         
@@ -322,7 +324,7 @@ class FovTile:
         return result
 
     def wall_w_subtiles(self, subtiles: int, ref_x: int, ref_y: int) -> Set[Tuple[int, int]]:
-        """Returns North wall subtiles in the Tile as (x,y) coordinates."""
+        """Returns West wall subtiles in the Tile as (x,y) coordinates."""
         result = {*bresenham(ref_x, ref_y, ref_x, ref_y + subtiles - 1)}
         return result
 
