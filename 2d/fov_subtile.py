@@ -5,7 +5,7 @@ Key Ideas:
 - As # of subtiles go up, FOV granularity and generation time go up. 4 is a good value.
 - FOV is divided into 8 parts called octants (not to be confused with geometric term).
 - Uses bresenham lines comprised of subtiles to determine which tile are visible.
-- There are 64FOV angle ranges are quantized into 64, 128, or 256 subdivisions.
+- There are 64 FOV angle ranges, quantized into 64, 128, or 256 subdivisions.
 """
 import math
 import pygame, pygame.freetype
@@ -924,6 +924,12 @@ def run_game(tilemap: TileMap, settings: Settings):
                 if event.dict["key"] == pygame.K_d and px < tilemap.xdims - 1:
                     redraw = True
                     px += 1
+                if event.dict["key"] == pygame.K_c:
+                    show_cursor = not show_cursor
+                    redraw = True
+                if event.dict["key"] == pygame.K_f:
+                    show_fov_line = not show_fov_line
+                    redraw = True
 
         # Check for mouse movement
         mdx, mdy = pygame.mouse.get_rel()
