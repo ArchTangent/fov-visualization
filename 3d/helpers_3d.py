@@ -66,9 +66,10 @@ class Axis(Enum):
 class QBits(Enum):
     """Number of Q bits used for quantized slopes and angle ranges."""
 
-    Q64 = 1  # Least granular
-    Q128 = 2
-    Q256 = 3  # Most granular
+    Q32 = 32  # Least granular
+    Q64 = 64
+    Q128 = 128
+    Q256 = 256  # Most granular
 
 
 #   ########  ##    ##  ##    ##   ######   ########  ########   ######   ##    ##

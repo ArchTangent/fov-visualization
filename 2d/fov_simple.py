@@ -438,6 +438,8 @@ def quantized_slopes_narrow(
     See: "2D Dynamic FOV - Quantized 64-bit.ods" file.
     """
     match bits:
+        case QBits.Q32:
+            return math.ceil(slope_lo * 31.0), min(math.floor(slope_hi * 31.0), 31)
         case QBits.Q64:
             return math.ceil(slope_lo * 63.0), min(math.floor(slope_hi * 63.0), 63)
         case QBits.Q128:
@@ -461,6 +463,10 @@ def quantized_slopes_wide(
     See: "2D Dynamic FOV - Quantized 64-bit.ods" file.
     """
     match bits:
+        case QBits.Q32:
+            return max(math.floor(slope_lo * 31.0), 0), min(
+                math.ceil(slope_hi * 31.0), 31
+            )
         case QBits.Q64:
             return max(math.floor(slope_lo * 63.0), 0), min(
                 math.ceil(slope_hi * 63.0), 63

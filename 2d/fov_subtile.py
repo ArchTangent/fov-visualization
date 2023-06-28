@@ -147,7 +147,7 @@ class Tile:
         self.wall_w = blockers.wall_w
 
     def __repr__(self) -> str:
-        return f"C{self.tid}({self.x},{self.y})"
+        return f"T{self.tid}({self.x},{self.y})"
 
     def to_coords(self) -> Tuple[int, int]:
         return (self.x, self.y)
