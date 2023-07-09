@@ -12,18 +12,59 @@ from pygame import Vector2
 from pygame.color import Color
 from pygame.freetype import Font
 from pygame.surface import Surface
-from helpers import Octant, QBits, boundary_radii, max_fovtile_index, pri_sec_to_relative, to_tile_id
+from helpers import (
+    to_tile_id,
+    Coords,
+    Octant,
+    QBits,
+    boundary_radii,
+    max_fovtile_index,
+    pri_sec_to_relative,
+)
 from typing import List, Tuple
 
 
-class Actor:
-    """Player character to be rendered on the FOV map."""
+class Settings:
+    """Settings for Pygame."""
 
-    def __init__(self, x: int, y: int, radius: int) -> None:
-        self.pos = Vector2(float(x), float(y))
-        self.x = x
-        self.y = y
-        self.radius = radius
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        map_dims: Coords,
+        tile_size: int,
+        line_width: int,
+        fov_radius: int,
+        font: Font,
+        font_color: Color,
+        subtiles_xy: int = 8,
+        floor_color="steelblue2",
+        floor_trim_color="steelblue4",
+        fov_line_color="slateblue1",
+        fov_line_trim_color="slateblue3",
+        structure_color="seagreen3",
+        structure_trim_color="seagreen4",
+        unseen_color="gray15",
+        draw_tid: bool = False,
+    ) -> None:
+        self.width = width
+        self.height = height
+        self.map_dims = map_dims
+        self.tile_size = tile_size
+        self.line_width = line_width
+        self.subtiles_xy = subtiles_xy
+        self.subtile_size = tile_size // subtiles_xy
+        self.font = font
+        self.font_color = font_color
+        self.fov_radius = fov_radius
+        self.floor_color = Color(floor_color)
+        self.fov_line_color = fov_line_color
+        self.fov_line_trim_color = fov_line_trim_color
+        self.floor_trim_color = Color(floor_trim_color)
+        self.structure_color = Color(structure_color)
+        self.structure_trim_color = Color(structure_trim_color)
+        self.unseen_color = Color(unseen_color)
+        self.draw_tid = draw_tid
 
 
 class TileMap:
@@ -32,20 +73,22 @@ class TileMap:
     NOTE: direct access to Tilemap.tiles uses [y][x] order. Use `tile_at(x,y)` instead.
     """
 
-    def __init__(self, xdims: int, ydims: int, blocked: set[Tuple[int, int]]):
-        self.xdims = xdims
-        self.ydims = ydims
+    def __init__(self, dims: Coords, blocked: set[Tuple[int, int]]):
+        self.xdims, self.ydims = dims
+        ts = settings.tile_size
+
         self.tiles = [
             [
                 Tile(
-                    to_tile_id(x, y, xdims),
+                    to_tile_id(x, y, self.xdims),
                     x,
                     y,
+                    ts,
                     (x, y) in blocked,
                 )
-                for x in range(xdims)
+                for x in range(self.xdims)
             ]
-            for y in range(ydims)
+            for y in range(self.ydims)
         ]
 
     def tile_at(self, x: int, y: int):
@@ -65,12 +108,14 @@ class TileMap:
 class Tile:
     """2D Tile."""
 
-    def __init__(self, tid: int, x: int, y: int, blocked: bool):
+    def __init__(self, tid: int, x: int, y: int, ts: int, blocked: bool):
         self.tid = tid
         self.x = x
         self.y = y
         self.blocks_path = blocked
         self.blocks_sight = blocked
+        # Reference point on the map for drawing
+        self.p1 = Vector2(x * ts, y * ts)
 
     def __repr__(self) -> str:
         return f"C{self.tid}({self.x},{self.y})"
@@ -180,7 +225,8 @@ class FovTile:
 #   ##        ##    ##  ##    ##
 #   ######    ##    ##  ##    ##
 #   ##        ##    ##   ##  ##
-#   ##         ######      ##  
+#   ##         ######      ##
+
 
 def fov_calc(
     ox: int, oy: int, tilemap: TileMap, fov_map: FovMap, radius: int
@@ -330,7 +376,9 @@ def get_visible_tiles(
     pri_ix, sec_ix = max_fovtile_index(max_pri), max_sec + 1
 
     for fov_tile in fov_tiles[:pri_ix]:
-        if fov_tile.dsec < sec_ix and tile_is_visible(fov_tile.visible_bits, blocked_bits):
+        if fov_tile.dsec < sec_ix and tile_is_visible(
+            fov_tile.visible_bits, blocked_bits
+        ):
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
             visible_tiles.append((tx, ty))
@@ -513,32 +561,77 @@ def tile_is_visible(visible_bits: int, blocked_bits: int) -> bool:
 #   ##    ##  ##    ##   ##  ##   ##    ##
 #   ##    ##  #######   ##    ##  ## ## ##
 #   ##    ##  ##   ##   ########  ###  ###
-#   #######   ##    ##  ##    ##   ##  ##  
+#   #######   ##    ##  ##    ##   ##  ##
+
+
+def draw_floor(
+    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
+):
+    """Draws a floor tile with reference point `pr` and tile size `ts`."""
+    p1 = Vector2(pr.x, pr.y)
+    p2 = Vector2(pr.x + ts, pr.y)
+    p3 = Vector2(pr.x + ts, pr.y + ts)
+    p4 = Vector2(pr.x, pr.y + ts)
+
+    pygame.draw.lines(screen, color, True, [p1, p2, p3, p4], width=2)
+
+
+def draw_structure(
+    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
+):
+    """Draws a structure in a tile with reference point `pr` and tile size `ts`."""
+    p1 = Vector2(pr.x, pr.y)
+    p2 = Vector2(pr.x + ts, pr.y)
+    p3 = Vector2(pr.x + ts, pr.y + ts)
+    p4 = Vector2(pr.x, pr.y + ts)
+
+    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
+    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
+
+
+def draw_tile(screen: Surface, tile: Tile, settings: Settings):
+    """Renders a visible 3D Tile on the map."""
+    p1 = tile.p1
+    p1x, p1y = tile.p1
+    s = settings
+    w = s.line_width
+    ts = s.tile_size
+    sts = s.subtile_size
+    trim_color = settings.floor_trim_color
+
+    # Draw grid if no structure present
+    if not tile.blocks_sight:
+        for dx in range(1, settings.subtiles_xy):
+            x1 = p1x + dx * sts
+            y1 = p1y
+            x2 = p1x + dx * sts
+            y2 = p1y + ts
+            pygame.draw.line(screen, trim_color, (x1, y1), (x2, y2))
+
+        for dy in range(1, settings.subtiles_xy):
+            x1 = p1x
+            y1 = p1y + dy * sts
+            x2 = p1x + ts
+            y2 = p1y + dy * sts
+            pygame.draw.line(screen, trim_color, (x1, y1), (x2, y2))
+
+        draw_floor(screen, p1, ts, w, s.floor_color, s.floor_trim_color)
+    else:
+        draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
+
 
 def draw_map(
     tilemap: TileMap,
     visible_tiles: set,
     screen: Surface,
-    font: Font,
-    tile_size: int,
-    font_color: Color,
+    settings: Settings,
 ):
     """Renders the Tilemap, accounting for FOV."""
     # Row is y; col is x
     for ty, row_data in enumerate(tilemap.tiles):
         for tx, tile in enumerate(row_data):
-            block = Surface((tile_size, tile_size))
             if (tx, ty) in visible_tiles:
-                if tile.blocks_sight:
-                    block.fill(Color("slategray"))
-                else:
-                    # block.fill((color_shift_col*col, color_shift_row*row, 125))
-                    block.fill((90, 0, 125))
-            else:
-                block.fill(Color("black"))
-
-            font.render_to(block, (18, 24), f"{tile.tid}", fgcolor=font_color)
-            screen.blit(block, (tx * tile_size, ty * tile_size))
+                draw_tile(screen, tile, settings)
 
 
 def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_size: int):
@@ -546,9 +639,82 @@ def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_siz
     screen.blit(player_img, (px * tile_size, py * tile_size))
 
 
-def draw_shroud(screen: Surface, font: Font, tile_size: int, font_color: Color):
-    """Renders the shroud of the FovMap.  Drawn after Tilemap."""
-    pass
+#   #######   ########  ##    ##   ######   ##    ##
+#   ##    ##  ##        ###   ##  ##    ##  ##    ##
+#   #######   ######    ## ## ##  ##        ########
+#   ##    ##  ##        ##   ###  ##    ##  ##    ##
+#   #######   ########  ##    ##   ######   ##    ##
+
+import random
+import time
+
+
+def time_fov(maps: int, radius: int, density: int, tries: int, seed: int):
+    """Times visible tiles calc with FovTiles. 129x129 map w/64-fov Unit in center."""
+    dims = Coords(128, 128)
+    random.seed(seed)
+    total_time = 0
+    total_vt = 0
+
+    for _ in range(maps):
+        blocked = {
+            (random.randint(0, 128), random.randint(0, 128)) for _ in range(density)
+        }
+        tm = TileMap(dims, blocked)
+        fm = FovMap(radius)
+        for trial in range(tries):
+            start = time.time()
+            vt = fov_calc(64, 64, tm, fm, radius)
+            total_vt += len(vt)
+            end = time.time()
+            total_time += end - start
+
+    print(f"Time (reg): {total_time} seconds")
+
+
+def time_fov_columns(maps: int, radius: int, density: int, tries: int, seed: int):
+    """Times visible tiles calc with FovTiles and column filter. 129x129 map w/64-fov Unit in center."""
+    dims = Coords(128, 128)
+    random.seed(seed)
+    total_time = 0
+    total_vt = 0
+
+    for _ in range(maps):
+        blocked = {
+            (random.randint(0, 128), random.randint(0, 128)) for _ in range(density)
+        }
+        tm = TileMap(dims, blocked)
+        fm = FovMap(radius)
+        for trial in range(tries):
+            start = time.time()
+            vt = fov_calc_columns(64, 64, tm, fm, radius)
+            total_vt += len(vt)
+            end = time.time()
+            total_time += end - start
+
+    print(f"Time (columns): {total_time} seconds")
+
+
+def time_fov_raw(maps: int, radius: int, density: int, tries: int, seed: int):
+    """Times visible tiles calc without FovTiles. 129x129 map w/64-fov Unit in center."""
+    random.seed(seed)
+    total_time = 0
+    total_vt = 0
+
+    for _ in range(maps):
+        blocked = {
+            (random.randint(0, 128), random.randint(0, 128)) for _ in range(density)
+        }
+        tm = TileMap(settings.map_dims, blocked)
+        fm = FovMap(radius)
+        for trial in range(tries):
+            start = time.time()
+            vt = fov_calc_raw(64, 64, tm, radius)
+            total_vt += len(vt)
+            end = time.time()
+            total_time += end - start
+
+    print(f"Time (raw): {total_time} seconds")
 
 
 #    ######      ##     ##    ##  ########
@@ -557,32 +723,33 @@ def draw_shroud(screen: Surface, font: Font, tile_size: int, font_color: Color):
 #   ##    ##  ########  ##    ##  ##
 #    ######   ##    ##  ##    ##  ########
 
-def run_game(tilemap: TileMap, player: Actor):
+
+def run_game(blocked: set[Tuple[int, int]], settings: Settings):
     """Renders the FOV display using Pygame."""
     # --- Pygame setup --- #
     pygame.init()
-    pygame.display.set_caption("Tilemap Testing")
+    pygame.display.set_caption("2D Simple FOV")
     screen = pygame.display.set_mode((1280, 720))
     pygame.key.set_repeat(0)
     clock = pygame.time.Clock()
     running = True
 
     # --- Player Setup --- #
-    px, py = player.x, player.y
-    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
-    radius = player.radius
+    px, py = (0, 0)
+    player_img = pygame.image.load("assets/paperdoll_1.png").convert_alpha()
+    radius = settings.fov_radius
 
     # --- Map Setup --- #
+    tilemap = TileMap(settings.map_dims, blocked)
     tile_size = 64
-    font = Font(None, size=16)
-    font_color = Color("snow")
+
     fov_map = FovMap(radius)
     visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
 
     # --- HUD Setup --- #
 
     # --- Initial Draw --- #
-    draw_map(tilemap, visible_tiles, screen, font, tile_size, font_color)
+    draw_map(tilemap, visible_tiles, screen, settings)
     draw_player(screen, player_img, px, py, tile_size)
 
     # --- Game Loop --- #
@@ -612,8 +779,10 @@ def run_game(tilemap: TileMap, player: Actor):
 
         # --- Rendering --- #
         if redraw:
+            # fill the screen with a color to wipe away anything from last frame
+            screen.fill("black")
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
-            draw_map(tilemap, visible_tiles, screen, font, tile_size, font_color)
+            draw_map(tilemap, visible_tiles, screen, settings)
             draw_player(screen, player_img, px, py, tile_size)
 
         pygame.display.flip()
@@ -632,8 +801,28 @@ def run_game(tilemap: TileMap, player: Actor):
 if __name__ == "__main__":
     print("\n=====  2D Dynamic FOV Testing  =====\n")
 
-    player = Actor(0, 0, 10)
-    blocked_tiles = {(0, 1), (2, 1), (3, 2), (3, 3), (4, 0), (4, 6), (5, 5), (5, 6)}
-    tilemap = TileMap(16, 9, blocked_tiles)
-    run_game(tilemap, player)
+    pygame.freetype.init()
 
+    blocked = {
+        (4, 4),
+        (5, 4),
+        (8, 4),
+        (10, 4),
+        (13, 7),
+        (14, 6),
+        (15, 0),
+        (15, 1),
+    }
+
+    settings = Settings(
+        1280,
+        720,
+        Coords(16, 9),
+        64,
+        1,
+        64,
+        Font(None, size=16),
+        Color("snow"),
+    )
+
+    run_game(blocked, settings)
