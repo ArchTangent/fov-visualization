@@ -1390,6 +1390,7 @@ if __name__ == "__main__":
         (5, 4): Blockers(wall_w=2),
         (8, 4): Blockers(wall_n=2, wall_w=2),
         (10, 4): Blockers(wall_n=2),
+        (11, 4): Blockers(wall_n=2),
         (13, 7): Blockers(structure=True),
         (14, 6): Blockers(structure=True),
         (15, 0): Blockers(wall_w=2),
