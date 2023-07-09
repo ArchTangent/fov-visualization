@@ -50,6 +50,53 @@ class Line:
     def as_tuple(self):
         return (self.x1, self.y1, self.x2, self.y2)
 
+    def intersects(self, other: Self) -> bool:
+        """Returns `True` if this line intersects `other` line.
+
+        Segment 1 is from (x1, y1) to (x2, y2), along `t`.
+        Segment 2 is from (x3, y3) to (x4, y4), along `u`.
+        """
+        x1, y1, x2, y2 = self
+        x3, y3, x4, y4 = other
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if denom == 0:
+            return False
+
+        # Intersection point must be along `t` and `u`
+        t_num = (x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)
+        if (t_num > 0 and t_num > denom) or (t_num < 0 and t_num < denom):
+            return False
+
+        u_num = (x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)
+        if (u_num > 0 and u_num > denom) or (u_num < 0 and u_num < denom):
+            return False
+
+        return True
+
+    def intersection(self, other: Self):
+        """Returns intersection point of self and `other` line, else `None`.
+
+        Segment 1 is from (x1, y1) to (x2, y2), along `t`.
+        Segment 2 is from (x3, y3) to (x4, y4), along `u`.
+        """
+        x1, y1, x2, y2 = self
+        x3, y3, x4, y4 = other
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if denom == 0:
+            return None
+
+        # Intersection point must be along `t` and `u`
+        t_num = (x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)
+        if (t_num > 0 and t_num > denom) or (t_num < 0 and t_num < denom):
+            return None
+
+        u_num = (x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)
+        if (u_num > 0 and u_num > denom) or (u_num < 0 and u_num < denom):
+            return None
+
+        # Choose either `t` or `u` intersection point (`t` chosen)
+        t = t_num / denom
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
 
 class Octant(Enum):
     """Octant for use in FOV calcs. Octant 1 is ENE.  Count CCW."""
