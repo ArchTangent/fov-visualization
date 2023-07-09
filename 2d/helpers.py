@@ -1,7 +1,7 @@
 """2D Helper functions and classes for FOV Visualization."""
 from dataclasses import dataclass
 from enum import Enum
-from typing import Tuple
+from typing import Self, Tuple
 
 @dataclass
 class Coords:
@@ -50,6 +50,29 @@ class QBits(Enum):
     Q64 = 64
     Q128 = 128
     Q256 = 256  # Most granular
+
+
+class VisibleTile:
+    """Describes visible substructures inside a visible tile."""
+
+    __slots__ = "tile", "structure", "wall_n", "wall_w"
+
+    def __init__(self, tile: bool, structure: bool, wall_n: bool, wall_w: bool) -> None:
+        self.tile = tile
+        self.structure = structure
+        self.wall_n = wall_n
+        self.wall_w = wall_w
+
+    def __repr__(self) -> str:
+        return f"[VT] T: {self.tile}, S: {self.structure}, N: {self.wall_n}, W: {self.wall_w}"
+
+    def update(self, other: Self):
+        """Updates fields in `self` with those of `other`."""
+        self.tile |= other.tile
+        self.structure |= other.structure
+        self.wall_n |= other.wall_n
+        self.wall_w |= other.wall_w
+
 
 #   ########  ##    ##  ##    ##   ######   ########  ########   ######   ##    ##
 #   ##        ##    ##  ####  ##  ##    ##     ##        ##     ##    ##  ####  ##

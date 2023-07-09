@@ -17,8 +17,8 @@ from helpers import (
     Coords,
     FovLineType,
     Octant,
+    VisibleTile,
     boundary_radii,
-    max_fovtile_index,
     octant_transform,
     pri_sec_to_relative,
     to_tile_id,
@@ -40,8 +40,8 @@ class Settings:
         subtiles_xy: int,
         font: Font,
         font_color: Color,
-        fov_radius: int=63,
-        fov_line_type: FovLineType=FovLineType.NORMAL,
+        fov_radius: int = 63,
+        fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
         fov_line_color="slateblue1",
@@ -147,7 +147,7 @@ class Tile:
         self.wall_w = blockers.wall_w
 
     def __repr__(self) -> str:
-        return f"T{self.tid}({self.x},{self.y})"
+        return f"T{self.tid}({self.x},{self.y}) S:{self.structure} N: {self.wall_n} W: {self.wall_w}"
 
     def to_coords(self) -> Tuple[int, int]:
         return (self.x, self.y)
@@ -163,7 +163,7 @@ def get_tile_at_cursor(mx: int, my: int, dims: Coords, tile_size: int) -> Coords
 
 class FovMap:
     """2D FOV map of FovTiles used with TileMap to determine visible tiles.
-    
+
     `radius`: int
         Maximum in-game FOV radius. 63 is a good choice.
     `subtiles`: int
@@ -190,22 +190,35 @@ class FovOctant:
 
     This version includes the observer's own tile (radius 0) due to walls.
 
-    `radius`: int
-        Maximum in-game FOV radius, also granularity. 63 is a good choice.
-    `subtiles`: int
-        Number of subtilesMaximum in-game FOV radius.
+    ### Parameters
+
+    `qbits`: int
+        Number of bits used to quantize FOV lines. Higher = more granular FOV.
+        For qbits = 64, the FOV radius is from 0-63.
     `octant`: Octant
         One of 8 Octants represented by this instance.
+
+    ### Fields
+
+    `max_fov_ix`: List[int]
+        Maximum FovCell index of x or y for a given radius. For example,
+        max_fov_ix[22] gives the index of the farthest FovTile in FovOctant.tiles
+        for a radius of 22.
     """
 
-    def __init__(self, radius: int, subtiles: int, octant: Octant, fov_line_type: FovLineType):
+    def __init__(
+        self, radius: int, subtiles: int, octant: Octant, fov_line_type: FovLineType
+    ):
         self.tiles: List[FovTile] = []
+        self.max_fov_ix: List[int] = []
         slice_threshold = 1
         tix = 0
 
         fov_lines = FovLines(radius, subtiles, octant, fov_line_type)
 
         for dpri in range(radius + 1):
+            self.max_fov_ix.append(tix)
+
             for dsec in range(slice_threshold):
                 tile = FovTile(tix, dpri, dsec, subtiles, octant, fov_lines)
                 self.tiles.append(tile)
@@ -215,12 +228,14 @@ class FovOctant:
 
 class FovLines:
     """Sets of coordinates for each FOV line in range [0, radius].
-    
+
     There is one FOV bit / FOV index for each FOV line (radius + 1). If the
     radius is 63, there are 64 FOV bits, one bit for each FOV line.
     """
 
-    def __init__(self, radius: int, subtiles_xy: int, octant: Octant, fov_line_type: FovLineType) -> None:
+    def __init__(
+        self, radius: int, subtiles_xy: int, octant: Octant, fov_line_type: FovLineType
+    ) -> None:
         line_func = bresenham if fov_line_type == FovLineType.NORMAL else bresenham_full
         start = subtiles_xy // 2
         pri = start + subtiles_xy * radius
@@ -230,9 +245,9 @@ class FovLines:
         for r in range(radius + 1):
             sec = start + r * subtiles_xy
             tgt = octant_transform(pri, sec, Octant.O1, octant)
-            line_list = {c for c in  line_func(*src, *tgt)}
+            line_list = {c for c in line_func(*src, *tgt)}
             self.lines.append(line_list)
-            
+
 
 class FovTile:
     """2D FOV Tile used in an `FovOctant`.
@@ -250,23 +265,46 @@ class FovTile:
         Bitflags spanning the visible Δsec/Δpri FIV lines for the tile.
     `blocking_bits`: u64
         Bitflags spanning the Δsec/Δpri FOV lines blocked by the tile (if wall present).
-    `ref_x`, `ref_y`: int 
+    `ref_x`, `ref_y`: int
         Reference subtiles (upper left) used for wall and structure placement within a tile.
     `fov_lines`: FovLines
         Grouping of FOV lines for the given octant, used to get blocking and visible bits.
     """
-    __slots__ = "wall_n_bits", "wall_w_bits", "structure_bits", "visible_bits", "ref_x", "ref_y", "rx", "ry", "dsec", "tix"
 
-    def __init__(self, tix: int, dpri: int, dsec: int, subtiles_xy: int, octant: Octant, fov_lines: FovLines):
+    __slots__ = (
+        "wall_n_bits",
+        "wall_w_bits",
+        "structure_bits",
+        "visible_bits",
+        "ref_x",
+        "ref_y",
+        "rx",
+        "ry",
+        "dpri",
+        "dsec",
+        "tix",
+    )
+
+    def __init__(
+        self,
+        tix: int,
+        dpri: int,
+        dsec: int,
+        subtiles_xy: int,
+        octant: Octant,
+        fov_lines: FovLines,
+    ):
         # Octant-adjusted relative x/y used to select tile in TileMap
         # dsec is needed for slice filter and bounds checks in FOV calc
         rx, ry = pri_sec_to_relative(dpri, dsec, octant)
         self.rx, self.ry = int(rx), int(ry)
+        self.dpri = dpri
         self.dsec = dsec
         self.tix = tix
 
         ref_x, ref_y = self.reference_coords(rx, ry, subtiles_xy, octant)
-    
+        self.ref_x, self.ref_y = ref_x, ref_y
+
         wall_tiles_n = self.wall_n_subtiles(subtiles_xy, ref_x, ref_y)
         wall_tiles_w = self.wall_w_subtiles(subtiles_xy, ref_x, ref_y)
         structure_tiles = self.structure_subtiles(subtiles_xy, ref_x, ref_y)
@@ -291,14 +329,15 @@ class FovTile:
                 self.structure_bits |= bit_ix
                 self.visible_bits |= bit_ix
 
-
     def __repr__(self) -> str:
         return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), ref: {self.ref_x, self.ref_y}, wall N/W: {bin(self.wall_n_bits)}/{bin(self.wall_w_bits)}"
-       
-    def reference_coords(self, rx: int, ry: int, subtiles_xy: int, octant: Octant) -> Tuple[int, int]:
+
+    def reference_coords(
+        self, rx: int, ry: int, subtiles_xy: int, octant: Octant
+    ) -> Tuple[int, int]:
         """Get (x,y) subtile reference coordinates based on octant, relative to origin.
-        
-        FovLines use real coordinates WRT (0,0) origin. Octant 1 uses (+,+), 
+
+        FovLines use real coordinates WRT (0,0) origin. Octant 1 uses (+,+),
         Octant 5 uses (-,-) values.
 
         In Octant 2 at pri, sec of (1, 0), reference (x,y) should have (rx, ry) of (0, 1)
@@ -315,27 +354,34 @@ class FovTile:
                 ref_x, ref_y = bx - subtiles_xy + 1, by - subtiles_xy + 1
             case Octant.O7 | Octant.O8:
                 ref_x, ref_y = bx, by - subtiles_xy + 1
-        
+
         return ref_x, ref_y
 
-    def wall_n_subtiles(self, subtiles: int, ref_x: int, ref_y: int) -> Set[Tuple[int, int]]:
+    def wall_n_subtiles(
+        self, subtiles: int, ref_x: int, ref_y: int
+    ) -> Set[Tuple[int, int]]:
         """Returns North wall subtiles in the Tile as (x,y) coordinates."""
         result = {*bresenham(ref_x, ref_y, ref_x + subtiles - 1, ref_y)}
         return result
 
-    def wall_w_subtiles(self, subtiles: int, ref_x: int, ref_y: int) -> Set[Tuple[int, int]]:
+    def wall_w_subtiles(
+        self, subtiles: int, ref_x: int, ref_y: int
+    ) -> Set[Tuple[int, int]]:
         """Returns West wall subtiles in the Tile as (x,y) coordinates."""
         result = {*bresenham(ref_x, ref_y, ref_x, ref_y + subtiles - 1)}
         return result
 
-    def structure_subtiles(self, subtiles: int, ref_x: int, ref_y: int) -> Set[Tuple[int, int]]:
+    def structure_subtiles(
+        self, subtiles: int, ref_x: int, ref_y: int
+    ) -> Set[Tuple[int, int]]:
         """Returns Structure subtiles in the Tile as (x,y) coordinates."""
         result = set()
         for y in range(ref_y, ref_y + subtiles):
             line = bresenham(ref_x, y, ref_x + subtiles - 1, y)
             result.update(line)
-        
+
         return result
+
 
 #   #######   #######      ##     ##    ##
 #   ##    ##  ##    ##   ##  ##   ##    ##
@@ -343,14 +389,11 @@ class FovTile:
 #   ##    ##  ##   ##   ########  ###  ###
 #   #######   ##    ##  ##    ##   ##  ##
 
-def draw_tile(screen: Surface, tile: Tile, visible_bits: int, settings: Settings):
-    """Renders a visible 3D Tile on the map.
-    
-    `draw_bits` indicate which objects to draw (e.g. 0b010):
-    - 0th bit is the tile (and structure)
-    - 1st bit is the North wall
-    - 2nd bit is the West wall
-    """
+
+def draw_tile(
+    screen: Surface, tile: Tile, visible_tile: VisibleTile, settings: Settings
+):
+    """Renders a visible 3D Tile on the map."""
     p1 = tile.p1
     p1x, p1y = tile.p1
     s = settings
@@ -359,12 +402,13 @@ def draw_tile(screen: Surface, tile: Tile, visible_bits: int, settings: Settings
     sts = s.subtile_size
     trim_color = settings.floor_trim_color
 
-    tile_bit = visible_bits & 0b001
-    wall_n_bit = visible_bits & 0b010
-    wall_w_bit = visible_bits & 0b100
+    tile_seen = visible_tile.tile
+    wall_n_seen = visible_tile.wall_n
+    wall_w_seen = visible_tile.wall_w
+    structure_seen = visible_tile.structure
 
     # Draw Tile (if not blocked by walls), and structure (if present)
-    if tile_bit:
+    if tile_seen:
         # Draw subgrid
         for dx in range(1, settings.subtiles_xy):
             x1 = p1x + dx * sts
@@ -382,34 +426,23 @@ def draw_tile(screen: Surface, tile: Tile, visible_bits: int, settings: Settings
 
         draw_floor(screen, p1, ts, w, s.floor_color, s.floor_trim_color)
 
-        if tile.structure:
-            draw_structure(
-                screen, p1, ts, w, s.structure_color, s.structure_trim_color
-            )
+        if structure_seen:
+            draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
 
-    # Draw N wall (if present)
-    if wall_n_bit:
-        draw_north_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
-    # Draw W wall (if present)
-    if wall_w_bit:
-        draw_west_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
+        if wall_n_seen:
+            draw_north_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
 
+        if wall_w_seen:
+            draw_west_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
 
-def draw_unseen_tile(screen: Surface, pr: Vector2, settings: Settings):
-    """Renders an unseen tile on the map."""
-    s = settings
-    w = s.line_width
-    color = s.unseen_color
-    trim = s.unseen_color
-    ts = s.tile_size
-
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=w)
+    # Draw walls separately if Tile not seen
+    else:
+        # Draw N wall (if present)
+        if wall_n_seen:
+            draw_north_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
+        # Draw W wall (if present)
+        if wall_w_seen:
+            draw_west_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
 
 
 def draw_fov_line(screen: Surface, tx: int, ty: int, settings: Settings):
@@ -433,7 +466,7 @@ def draw_fov_line_subpixel(screen: Surface, tx: int, ty: int, settings: Settings
     oy = half_sp
     fx = tx * sp + half_sp
     fy = ty * sp + half_sp
-    
+
     if settings.fov_line_type == FovLineType.NORMAL:
         tiles = bresenham(ox, oy, fx, fy)
     else:
@@ -467,13 +500,17 @@ def draw_floor(
     p3 = Vector2(pr.x + ts, pr.y + ts)
     p4 = Vector2(pr.x, pr.y + ts)
 
-    # pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    # pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
     pygame.draw.lines(screen, color, True, [p1, p2, p3, p4], width=2)
 
 
 def draw_north_wall(
-    screen: Surface, pr: Vector2, ts: int, sts: int, width: int, color: Color, trim: Color
+    screen: Surface,
+    pr: Vector2,
+    ts: int,
+    sts: int,
+    width: int,
+    color: Color,
+    trim: Color,
 ):
     """Draws a north wall w/reference `pr`, tile size `ts`, and subtile size `sts`."""
     p1 = Vector2(pr.x, pr.y)
@@ -486,7 +523,13 @@ def draw_north_wall(
 
 
 def draw_west_wall(
-    screen: Surface, pr: Vector2, ts: int, sts: int, width: int, color: Color, trim: Color
+    screen: Surface,
+    pr: Vector2,
+    ts: int,
+    sts: int,
+    width: int,
+    color: Color,
+    trim: Color,
 ):
     """Draws a north wall w/reference `pr`, tile size `ts`, and subtile size `sts`."""
     p1 = Vector2(pr.x, pr.y)
@@ -536,32 +579,36 @@ def draw_subgrid(screen: Surface, settings: Settings):
 def draw_map(
     screen: Surface,
     tilemap: TileMap,
-    visible_tiles: Dict[Tuple[int, int], int],
-    settings: Settings
+    visible_tiles: Dict[Tuple[int, int], VisibleTile],
+    settings: Settings,
 ):
     """Renders the Tilemap, accounting for FOV."""
     # Row is y; col is x
     for ty, row_data in enumerate(tilemap.tiles):
         for tx, tile in enumerate(row_data):
-            visible_bits = visible_tiles.get((tx, ty))
-            if visible_bits:
-                draw_tile(screen, tile, visible_bits, settings)
+            visible_tile = visible_tiles.get((tx, ty))
+            if visible_tile:
+                draw_tile(screen, tile, visible_tile, settings)
 
 
 def draw_line_to_cursor(
-    screen: Surface, mx: int, my: int, tile_mid: float, line_width: int
+    screen: Surface, px: int, py: int, mx: int, my: int, settings: Settings
 ):
-    """Draws a line from origin to mouse cursor.
+    """Draws a line from player to mouse cursor.
 
+    `px, py`: int
+        player tile position.
     `mx, my`: int
         mouse cursor position.
-    `tile_mid`: float
-       `tile_size / 2`.
     """
+    ts = settings.tile_size
+    mid = settings.tile_size * 0.5
+    line_width = settings.line_width
+
     pygame.draw.line(
         screen,
         Color("red"),
-        (tile_mid, tile_mid),
+        (px * ts + mid, py * ts + mid),
         (mx, my),
         line_width,
     )
@@ -602,159 +649,399 @@ def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_siz
 #   ##        ##    ##  ##    ##
 #   ######    ##    ##  ##    ##
 #   ##        ##    ##   ##  ##
-#   ##         ######      ##  
+#   ##         ######      ##
 
-def fov_calc(ox: int, oy: int, tilemap: TileMap, fov_map: FovMap, radius: int
-) -> Dict[Tuple[int, int], int]:
+
+def fov_calc(
+    ox: int, oy: int, tilemap: TileMap, fov_map: FovMap, radius: int
+) -> Dict[Tuple[int, int], VisibleTile]:
     """Returns visible tiles (and substructures) from given origin (ox, oy).
-    
-   Notes:
-    - check if tile is visible before applying blocking bits.
-    - tiles can only add to blocked bits if they are visible.
-    - the player's own tile is always visible.
 
-    `ox`, `oy`: int
-        Origin coordinates of the current Unit.
-    `radius`: int
-        Current unit's FOV radius.
-    `draw_bits`: int
-        Indicate which objects to draw (e.g. 0b010). 1st bit is the tile (and structure),
-        2nd bit is the North wall, 3rd bit is the West wall
+    #### Parameters
+
+     `ox`, `oy`: int
+         Origin coordinates of the current Unit.
+     `radius`: int
+         Current unit's FOV radius.
     """
     tm = tilemap
     origin = tm.tile_at(ox, oy)
     xdims, ydims = tm.xdims, tm.ydims
-    visible_bits = 0b001
-    if origin.wall_n:
-        visible_bits |= 0b010
-    if origin.wall_w:
-        visible_bits |= 0b100
-    visible_tiles = {(ox, oy): visible_bits}   # All tile structures visible in origin
+    _wall_n = origin.wall_n > 0
+    _wall_w = origin.wall_w > 0
+    _structure = origin.structure > 0
+    visible_tiles = {(ox, oy): VisibleTile(True, _structure, _wall_n, _wall_w)}
 
     # --- Octants 1-2 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O1, radius)
 
-    vis1 = get_visible_tiles_12(ox, oy, max_x, max_y, tm, fov_map.octant_1.tiles)
+    vis1 = get_visible_tiles_1(ox, oy, max_x, max_y, tm, fov_map.octant_1)
     update_visible_tiles(visible_tiles, vis1)
 
-    vis2 = get_visible_tiles_12(ox, oy, max_y, max_x, tm, fov_map.octant_2.tiles)
+    vis2 = get_visible_tiles_2(ox, oy, max_y, max_x, tm, fov_map.octant_2)
     update_visible_tiles(visible_tiles, vis2)
 
     # --- Octants 3-4 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O4, radius)
 
-    vis3 = get_visible_tiles_34(ox, oy, origin, max_y, max_x, tm, fov_map.octant_3.tiles)
+    vis3 = get_visible_tiles_3(ox, oy, origin, max_y, max_x, tm, fov_map.octant_3)
     update_visible_tiles(visible_tiles, vis3)
 
-    vis4 = get_visible_tiles_34(ox, oy, origin, max_x, max_y, tm, fov_map.octant_4.tiles)
+    vis4 = get_visible_tiles_4(ox, oy, origin, max_x, max_y, tm, fov_map.octant_4)
     update_visible_tiles(visible_tiles, vis4)
 
     # --- Octants 5-6 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O5, radius)
 
-    vis5 = get_visible_tiles_56(ox, oy, origin, max_x, max_y, tm, fov_map.octant_5.tiles)
+    vis5 = get_visible_tiles_56(ox, oy, origin, max_x, max_y, tm, fov_map.octant_5)
     update_visible_tiles(visible_tiles, vis5)
 
-    vis6 = get_visible_tiles_56(ox, oy, origin, max_y, max_x, tm, fov_map.octant_6.tiles)
+    vis6 = get_visible_tiles_56(ox, oy, origin, max_y, max_x, tm, fov_map.octant_6)
     update_visible_tiles(visible_tiles, vis6)
 
     # --- Octants 7-8 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O8, radius)
 
-    vis7 = get_visible_tiles_78(ox, oy, origin, max_y, max_x, tm, fov_map.octant_7.tiles)
+    vis7 = get_visible_tiles_7(ox, oy, origin, max_y, max_x, tm, fov_map.octant_7)
     update_visible_tiles(visible_tiles, vis7)
 
-    vis8 = get_visible_tiles_78(ox, oy, origin, max_x, max_y, tm, fov_map.octant_8.tiles)
+    vis8 = get_visible_tiles_8(ox, oy, origin, max_x, max_y, tm, fov_map.octant_8)
     update_visible_tiles(visible_tiles, vis8)
 
     return visible_tiles
 
 
-def get_visible_tiles_12(
+def get_visible_tiles_1(
     ox: int,
     oy: int,
     max_pri: int,
     max_sec: int,
     tilemap: TileMap,
-    fov_tiles: List[FovTile],
-) -> List[Tuple[int, int, int]]:
-    """Returns list of visible tiles and substructures in Octants 1 and 2.
-
-    `visible_bits` uses three bitflags: 0b000 (West, North, Tile)
-    """
-    pri_ix, sec_ix = max_fovtile_index(max_pri) + 1, max_sec + 1
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 1."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec
+    visible_tiles = []
     blocked_bits: int = 0
-    visible_tiles: List[Tuple[int, int, int]] = []
 
-    for fov_tile in fov_tiles[1:pri_ix]:    
-        if fov_tile.dsec < sec_ix and is_visible(fov_tile.visible_bits, blocked_bits):
+    # Primary index and visibility of previous tile
+    prev_pri: int = 0
+    prev_vis: bool = False
+
+    for fov_tile in fov_tiles[1:pri_ix]:
+        dpri = fov_tile.dpri
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec > sec_ix:
+            continue
+
+        if is_visible(visible_bits, blocked_bits):
             # For Octants 1 and 2, a tile may be blocked by its own N/W walls
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
-            visible_bits = 0b000
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
 
-            # NOTE: Check North wall before West
-            if tile.wall_w and is_visible(fov_tile.wall_w_bits, blocked_bits):
-                blocked_bits |= fov_tile.wall_w_bits
-                visible_bits |= 0b100
-            if tile.wall_n and is_visible(fov_tile.wall_n_bits, blocked_bits):
-                blocked_bits |= fov_tile.wall_n_bits
-                visible_bits |= 0b010
+            _tile = False
+            _structure = False
+            _wall_w = False
+            _wall_n = False
+            _wall_w_vis = False
+            _wall_n_vis = False
 
-            # NOTE: 2nd visibility check after adding own walls
-            if is_visible(fov_tile.visible_bits, blocked_bits):
-                visible_bits |= 0b001
+            # Check West wall before North; both walls before tile
+            if tile.wall_w:
+                _wall_w = True
+
+                if is_visible(wall_w_bits, blocked_bits):
+                    blocked_bits |= wall_w_bits
+                    _wall_w_vis = True
+
+            if tile.wall_n:
+                _wall_n = True
+
+                if (prev_vis and prev_pri == dpri) or is_visible(
+                    wall_n_bits, blocked_bits
+                ):
+                    blocked_bits |= wall_n_bits
+                    _wall_n_vis = True
+
+            # 2nd tile visibility check after adding own walls
+            if is_visible(visible_bits, blocked_bits):
+                prev_vis = True
+                _tile = True
+
                 if tile.structure:
-                    blocked_bits |= fov_tile.structure_bits
-        
-            visible_tiles.append((tx, ty, visible_bits))
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                prev_vis = False
+                _wall_n = _wall_n_vis
+                _wall_w = _wall_w_vis
+
+            prev_pri = dpri
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
+        else:
+            if prev_vis and dpri == prev_pri:
+                tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+                tile = tilemap.tile_at(tx, ty)
+
+                if tile.wall_n:
+                    vis_tile = VisibleTile(False, False, True, False)
+                    visible_tiles.append((tx, ty, vis_tile))
+
+            prev_vis = False
+            prev_pri = dpri
 
     return visible_tiles
 
 
-def get_visible_tiles_34(
+def get_visible_tiles_2(
+    ox: int,
+    oy: int,
+    max_pri: int,
+    max_sec: int,
+    tilemap: TileMap,
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 2."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec
+    visible_tiles = []
+    blocked_bits: int = 0
+
+    # Primary index and visibility of previous tile
+    prev_pri: int = 0
+    prev_vis: bool = False
+
+    for fov_tile in fov_tiles[1:pri_ix]:
+        dpri = fov_tile.dpri
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec > sec_ix:
+            continue
+
+        if is_visible(visible_bits, blocked_bits):
+            # For Octants 1 and 2, a tile may be blocked by its own N/W walls
+            tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+            tile = tilemap.tile_at(tx, ty)
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
+
+            _tile = False
+            _structure = False
+            _wall_w = False
+            _wall_n = False
+            _wall_w_vis = False
+            _wall_n_vis = False
+
+            # Check North wall before West; both walls before tile
+            if tile.wall_n:
+                _wall_n = True
+
+                if is_visible(wall_n_bits, blocked_bits):
+                    blocked_bits |= wall_n_bits
+                    _wall_n_vis = True
+
+            if tile.wall_w:
+                _wall_w = True
+
+                if (prev_vis and prev_pri == dpri) or is_visible(
+                    wall_w_bits, blocked_bits
+                ):
+                    blocked_bits |= wall_w_bits
+                    _wall_w_vis = True
+
+            # 2nd tile visibility check after adding own walls
+            if is_visible(visible_bits, blocked_bits):
+                prev_vis = True
+                _tile = True
+
+                if tile.structure:
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                prev_vis = False
+                _wall_n = _wall_n_vis
+                _wall_w = _wall_w_vis
+
+            prev_pri = dpri
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
+        else:
+            if prev_vis and dpri == prev_pri:
+                tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+                tile = tilemap.tile_at(tx, ty)
+
+                if tile.wall_w:
+                    vis_tile = VisibleTile(False, False, False, True)
+                    visible_tiles.append((tx, ty, vis_tile))
+
+            prev_vis = False
+            prev_pri = dpri
+
+    return visible_tiles
+
+
+def get_visible_tiles_3(
     ox: int,
     oy: int,
     origin: Tile,
     max_pri: int,
     max_sec: int,
     tilemap: TileMap,
-    fov_tiles: List[FovTile],
-) -> List[Tuple[int, int, int]]:
-    """Returns list of visible tiles and substructures in Octants 3 and 4.
-
-    `visible_bits` uses three bitflags: 0b000 (West, North, Tile)
-    """
-    pri_ix, sec_ix = max_fovtile_index(max_pri) + 1, max_sec + 1
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 3."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec + 1
+    visible_tiles = []
     blocked_bits: int = 0
-    visible_tiles: List[Tuple[int, int, int]] = []
 
     # Add West wall blocking bits for origin tile
     if origin.wall_w:
         blocked_bits |= fov_tiles[0].wall_w_bits
 
     for fov_tile in fov_tiles[1:pri_ix]:
-        if fov_tile.dsec < sec_ix and is_visible(fov_tile.visible_bits, blocked_bits):
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec < sec_ix and is_visible(visible_bits, blocked_bits):
             # For Octants 3 and 4, a tile may be blocked by its own N wall
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
-            visible_bits = 0b000
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
 
-            if tile.wall_n and is_visible(fov_tile.wall_n_bits, blocked_bits):
-                blocked_bits |= fov_tile.wall_n_bits
-                visible_bits |= 0b010
+            _tile = False
+            _structure = False
+            _wall_w = False
+            _wall_n = False
+            _wall_n_vis = False
+
+            # Check North wall before tile
+            if tile.wall_n:
+                _wall_n = True
+
+                if is_visible(wall_n_bits, blocked_bits):
+                    blocked_bits |= wall_n_bits
+                    _wall_n_vis = True
 
             # NOTE: 2nd visibility check after adding own walls
-            if is_visible(fov_tile.visible_bits, blocked_bits):
-                visible_bits |= 0b001
+            if is_visible(visible_bits, blocked_bits):
+                _tile = True
 
                 if tile.wall_w:
-                    blocked_bits |= fov_tile.wall_w_bits
-                    visible_bits |= 0b100
+                    blocked_bits |= wall_w_bits
+                    _wall_w = True
                 if tile.structure:
-                    blocked_bits |= fov_tile.structure_bits
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                _wall_n = _wall_n_vis
 
-            visible_tiles.append((tx, ty, visible_bits))
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
+    return visible_tiles
+
+
+def get_visible_tiles_4(
+    ox: int,
+    oy: int,
+    origin: Tile,
+    max_pri: int,
+    max_sec: int,
+    tilemap: TileMap,
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 4."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec
+    visible_tiles = []
+    blocked_bits: int = 0
+
+    # Add West wall blocking bits for origin tile
+    if origin.wall_w:
+        blocked_bits |= fov_tiles[0].wall_w_bits
+
+    # Primary index and visibility of previous tile
+    prev_pri: int = 0
+    prev_vis: bool = False
+
+    for fov_tile in fov_tiles[1:pri_ix]:
+        dpri = fov_tile.dpri
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec > sec_ix:
+            continue
+
+        if is_visible(visible_bits, blocked_bits):
+            # For Octants 3 and 4, a tile may be blocked by its own N wall
+            tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+            tile = tilemap.tile_at(tx, ty)
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
+
+            _tile = False
+            _structure = False
+            _wall_w = False
+            _wall_n = False
+            _wall_n_vis = False
+
+            if tile.wall_n:
+                _wall_n = True
+                if (prev_vis and prev_pri == dpri) or is_visible(
+                    wall_n_bits, blocked_bits
+                ):
+                    blocked_bits |= wall_n_bits
+                    _wall_n_vis = True
+
+            # NOTE: 2nd visibility check after adding own walls
+            if is_visible(visible_bits, blocked_bits):
+                prev_vis = True
+                _tile = True
+
+                if tile.wall_w:
+                    blocked_bits |= wall_w_bits
+                    _wall_w = True
+                if tile.structure:
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                prev_vis = False
+                _wall_n = _wall_n_vis
+
+            prev_pri = dpri
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
+        else:
+            if prev_vis and dpri == prev_pri:
+                tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+                tile = tilemap.tile_at(tx, ty)
+
+                if tile.wall_n:
+                    vis_tile = VisibleTile(False, False, True, False)
+                    visible_tiles.append((tx, ty, vis_tile))
+
+            prev_vis = False
+            prev_pri = dpri
 
     return visible_tiles
 
@@ -766,15 +1053,14 @@ def get_visible_tiles_56(
     max_pri: int,
     max_sec: int,
     tilemap: TileMap,
-    fov_tiles: List[FovTile],
-) -> List[Tuple[int, int, int]]:
-    """Returns list of visible tiles and substructures in Octants 5 and 6.
-
-    `visible_bits` uses three bitflags: 0b000 (West, North, Tile)
-    """
-    pri_ix, sec_ix = max_fovtile_index(max_pri) + 1, max_sec + 1
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octants 5 and 6."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec + 1
+    visible_tiles = []
     blocked_bits: int = 0
-    visible_tiles: List[Tuple[int, int, int]] = []
 
     # Add North and West wall blocking bits for origin tile
     if origin.wall_n:
@@ -782,71 +1068,191 @@ def get_visible_tiles_56(
     if origin.wall_w:
         blocked_bits |= fov_tiles[0].wall_w_bits
 
-    for fov_tile in fov_tiles[1:pri_ix]:    
-        if fov_tile.dsec < sec_ix and is_visible(fov_tile.visible_bits, blocked_bits):
+    for fov_tile in fov_tiles[1:pri_ix]:
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec < sec_ix and is_visible(visible_bits, blocked_bits):
             # For Octants 5 and 6, tiles are not blocked by their own N/W walls
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
-            visible_bits = 0b001
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
+
+            _tile = True
+            _structure = False
+            _wall_w = False
+            _wall_n = False
 
             if tile.structure:
-                blocked_bits |= fov_tile.structure_bits
+                blocked_bits |= structure_bits
+                _structure = True
             if tile.wall_n:
-                blocked_bits |= fov_tile.wall_n_bits
-                visible_bits |= 0b010
+                blocked_bits |= wall_n_bits
+                _wall_n = True
             if tile.wall_w:
-                blocked_bits |= fov_tile.wall_w_bits
-                visible_bits |= 0b100
+                blocked_bits |= wall_w_bits
+                _wall_w = True
 
-            visible_tiles.append((tx, ty, visible_bits))
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
 
     return visible_tiles
 
 
-def get_visible_tiles_78(
+def get_visible_tiles_7(
     ox: int,
     oy: int,
     origin: Tile,
     max_pri: int,
     max_sec: int,
     tilemap: TileMap,
-    fov_tiles: List[FovTile],
-) -> List[Tuple[int, int, int]]:
-    """Returns list of visible tiles and substructures in Octants 7 and 8.
-
-    `visible_bits` uses three bitflags: 0b000 (West, North, Tile)
-    """
-    pri_ix, sec_ix = max_fovtile_index(max_pri) + 1, max_sec + 1
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 7."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec
+    visible_tiles = []
     blocked_bits: int = 0
-    visible_tiles: List[Tuple[int, int, int]] = []
+
+    # Add North wall blocking bits for origin tile
+    if origin.wall_n:
+        blocked_bits |= fov_tiles[0].wall_n_bits
+
+    # Primary index and visibility of previous tile
+    prev_pri: int = 0
+    prev_vis: bool = False
+
+    for fov_tile in fov_tiles[1:pri_ix]:
+        dpri = fov_tile.dpri
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec > sec_ix:
+            continue
+
+        if is_visible(visible_bits, blocked_bits):
+            # For Octants 7 and 8, a tile may be blocked by its own W wall
+            tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+            tile = tilemap.tile_at(tx, ty)
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
+
+            _tile = False
+            _structure = False
+            _wall_w_vis = False
+            _wall_w = False
+            _wall_n = False
+
+            # Check West wall before North wall and tiles
+            if tile.wall_w:
+                _wall_w = True
+
+                if (prev_vis and prev_pri == dpri) or is_visible(
+                    wall_w_bits, blocked_bits
+                ):
+                    blocked_bits |= wall_w_bits
+                    _wall_w_vis = True
+
+            # NOTE: 2nd visibility check after adding own walls
+            if is_visible(visible_bits, blocked_bits):
+                prev_vis = True
+                _tile = True
+
+                if tile.wall_n:
+                    blocked_bits |= wall_n_bits
+                    _wall_n = True
+                if tile.structure:
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                _wall_w = _wall_w_vis
+                prev_vis = False
+
+            prev_pri = dpri
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
+        else:
+            if prev_vis and dpri == prev_pri:
+                tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
+                tile = tilemap.tile_at(tx, ty)
+
+                if tile.wall_w:
+                    vis_tile = VisibleTile(False, False, False, True)
+                    visible_tiles.append((tx, ty, vis_tile))
+
+            prev_vis = False
+            prev_pri = dpri
+
+    return visible_tiles
+
+
+def get_visible_tiles_8(
+    ox: int,
+    oy: int,
+    origin: Tile,
+    max_pri: int,
+    max_sec: int,
+    tilemap: TileMap,
+    fov_octant: FovOctant,
+) -> List[Tuple[int, int, VisibleTile]]:
+    """Returns list of visible tiles and substructures in Octant 8."""
+    fov_tiles = fov_octant.tiles
+    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
+    sec_ix = max_sec + 1
+    visible_tiles = []
+    blocked_bits: int = 0
 
     # Add North wall blocking bits for origin tile
     if origin.wall_n:
         blocked_bits |= fov_tiles[0].wall_n_bits
 
     for fov_tile in fov_tiles[1:pri_ix]:
-        if fov_tile.dsec < sec_ix and is_visible(fov_tile.visible_bits, blocked_bits):
+        dsec = fov_tile.dsec
+        visible_bits = fov_tile.visible_bits
+
+        if dsec < sec_ix and is_visible(visible_bits, blocked_bits):
             # For Octants 7 and 8, a tile may be blocked by its own W wall
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
-            visible_bits = 0b000
+            wall_n_bits = fov_tile.wall_n_bits
+            wall_w_bits = fov_tile.wall_w_bits
+            structure_bits = fov_tile.structure_bits
 
+            _tile = False
+            _structure = False
+            _wall_w_vis = False
+            _wall_w = False
+            _wall_n = False
+
+            # Check West wall before checking tiles
             if tile.wall_w:
-                blocked_bits |= fov_tile.wall_w_bits
-                visible_bits |= 0b100
+                _wall_w = True
+
+                if is_visible(wall_w_bits, blocked_bits):
+                    blocked_bits |= wall_w_bits
+                    _wall_w_vis = True
 
             # NOTE: 2nd visibility check after adding own walls
-            if is_visible(fov_tile.visible_bits, blocked_bits):
-                visible_bits |= 0b001
+            if is_visible(visible_bits, blocked_bits):
+                _tile = True
 
                 if tile.wall_n:
-                    blocked_bits |= fov_tile.wall_n_bits
-                    visible_bits |= 0b010
+                    blocked_bits |= wall_n_bits
+                    _wall_n = True
                 if tile.structure:
-                    blocked_bits |= fov_tile.structure_bits
-            
-            visible_tiles.append((tx, ty, visible_bits))
-            
+                    blocked_bits |= structure_bits
+                    _structure = True
+            else:
+                _wall_w = _wall_w_vis
+
+            vis_tile = VisibleTile(_tile, _structure, _wall_n, _wall_w)
+            visible_tiles.append((tx, ty, vis_tile))
+
     return visible_tiles
 
 
@@ -855,15 +1261,18 @@ def is_visible(visible_bits: int, blocked_bits: int) -> bool:
     return visible_bits - (visible_bits & blocked_bits) > 0
 
 
-def update_visible_tiles(to_dict: Dict[Tuple[int, int], int], from_list: List[Tuple[int, int, int]]):
-    """"Updates full dictionary of visible tiles from per-octant list.
-    
-    Incoming list of tuples is in form (x, y, visible_bits), where 1st, 2nd, and 3rd 
-    visible_bits represent the tile/structure, North, and West wall to draw.
+def update_visible_tiles(
+    to_dict: Dict[Tuple[int, int], VisibleTile],
+    from_list: List[Tuple[int, int, VisibleTile]],
+):
+    """ "Updates full dictionary of visible tiles from per-octant list.
+
+    Incoming list of tuples is in form (x, y, visible_tile).
     """
-    for (x, y, visible_bits) in from_list:
-        current_bits = to_dict.get((x,y), 0)
-        to_dict[(x,y)] = current_bits | visible_bits
+    for x, y, visible_tile in from_list:
+        current = to_dict.get((x, y), VisibleTile(False, False, False, False))
+        current.update(visible_tile)
+        to_dict[(x, y)] = current
 
 
 #    ######      ##     ##    ##  ########
@@ -872,11 +1281,12 @@ def update_visible_tiles(to_dict: Dict[Tuple[int, int], int], from_list: List[Tu
 #   ##    ##  ########  ##    ##  ##
 #    ######   ##    ##  ##    ##  ########
 
+
 def run_game(tilemap: TileMap, settings: Settings):
     """Renders the FOV display using Pygame."""
     # --- Pygame setup --- #
     pygame.init()
-    pygame.display.set_caption("2D Subtile Testing")
+    pygame.display.set_caption("2D Subtile FOV")
     screen = pygame.display.set_mode((1280, 720))
     pygame.key.set_repeat(0)
     clock = pygame.time.Clock()
@@ -884,7 +1294,7 @@ def run_game(tilemap: TileMap, settings: Settings):
 
     # --- Player Setup --- #
     px, py = 0, 0
-    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
+    player_img = pygame.image.load("assets/paperdoll_1.png").convert_alpha()
 
     # --- Map Setup --- #
     radius = settings.fov_radius
@@ -893,6 +1303,7 @@ def run_game(tilemap: TileMap, settings: Settings):
     visible_tiles = fov_calc(0, 0, tilemap, fov_map, radius)
 
     # --- HUD Setup --- #
+    show_player_line = False
     show_fov_line = False
     show_cursor = True
 
@@ -930,6 +1341,9 @@ def run_game(tilemap: TileMap, settings: Settings):
                 if event.dict["key"] == pygame.K_f:
                     show_fov_line = not show_fov_line
                     redraw = True
+                if event.dict["key"] == pygame.K_r:
+                    show_player_line = not show_player_line
+                    redraw = True
 
         # Check for mouse movement
         mdx, mdy = pygame.mouse.get_rel()
@@ -944,13 +1358,15 @@ def run_game(tilemap: TileMap, settings: Settings):
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
             draw_map(screen, tilemap, visible_tiles, settings)
             draw_player(screen, player_img, px, py, tile_size)
-            
+
             tx, ty = get_tile_at_cursor(mx, my, settings.map_dims, tile_size)
 
             if show_fov_line:
-                draw_fov_line_subpixel(screen, tx, ty, settings)
+                draw_fov_line(screen, tx, ty, settings)
             if show_cursor:
                 draw_tile_at_cursor(screen, tx, ty, settings, line=False)
+            if show_player_line:
+                draw_line_to_cursor(screen, px, py, mx, my, settings)
 
         pygame.display.flip()
 
@@ -969,18 +1385,26 @@ if __name__ == "__main__":
     print("\n=====  2D Subpixel FOV Testing  =====\n")
     pygame.freetype.init()
     # FOV Blockers: (structure: int, north_wall: int, west_wall: int)
-    blocked = {
-        (0, 2): Blockers(wall_n=2, wall_w=2),
-        (2, 1): Blockers(structure=True),
-        (3, 2): Blockers(wall_w=2),
-        (3, 3): Blockers(wall_n=2, wall_w=2),
-        (4, 0): Blockers(wall_n=2, wall_w=2),
-        (4, 6): Blockers(wall_w=2),
-        (9, 3): Blockers(structure=True),
-        (8, 4): Blockers(structure=True),
+    blocked: Dict[Tuple[int, int], Blockers] = {
+        (4, 4): Blockers(wall_n=2),
+        (5, 4): Blockers(wall_w=2),
+        (8, 4): Blockers(wall_n=2, wall_w=2),
+        (10, 4): Blockers(wall_n=2),
+        (13, 7): Blockers(structure=True),
+        (14, 6): Blockers(structure=True),
+        (15, 0): Blockers(wall_w=2),
+        (15, 1): Blockers(wall_n=2),
     }
     settings = Settings(
-        1280, 720, Coords(16, 9), 64, 1, 4, Font(None, size=16), Color("snow"), fov_line_type=FovLineType.NORMAL
+        1280,
+        720,
+        Coords(16, 9),
+        64,
+        1,
+        8,
+        Font(None, size=16),
+        Color("snow"),
+        fov_line_type=FovLineType.NORMAL,
     )
     tilemap = TileMap(blocked, settings)
-    run_game(tilemap, settings)  
+    run_game(tilemap, settings)
