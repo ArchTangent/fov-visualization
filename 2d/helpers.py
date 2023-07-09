@@ -1,7 +1,7 @@
 """2D Helper functions and classes for FOV Visualization."""
 from dataclasses import dataclass
 from enum import Enum
-from typing import Self, Tuple
+from typing import Optional, Self, Tuple
 
 @dataclass
 class Coords:
@@ -28,6 +28,27 @@ class FovLineType(Enum):
 
     NORMAL = 1
     FULL = 2
+
+
+class Line:
+    """2D line segment."""
+
+    __slots__ = "x1", "y1", "x2", "y2"
+
+    def __init__(self, x1: int|float, y1: int|float, x2: int|float, y2: int|float) -> None:
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2
+        self.y2 = y2
+
+    def __iter__(self):
+        return iter((self.x1, self.y1, self.x2, self.y2))
+
+    def __repr__(self) -> str:
+        return f"Line {self.x1, self.y1, self.x2, self.y2}"
+
+    def as_tuple(self):
+        return (self.x1, self.y1, self.x2, self.y2)
 
 
 class Octant(Enum):
@@ -111,6 +132,34 @@ def cells_per_octant(fov: int) -> int:
     return sum(x for x in range(fov + 2))
 
 
+def line_line_intersection(
+    line1: Line, line2: Line
+) -> Optional[Tuple[float, float]]:
+    """Returns intersection point of line segments 1 and 2, else `None`.
+
+    Segment 1 is from (x1, y1) to (x2, y2), along `t`.
+    Segment 2 is from (x3, y3) to (x4, y4), along `u`.
+    """
+    x1, y1, x2, y2 = line1
+    x3, y3, x4, y4 = line2
+    denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if denom == 0:
+        return None
+
+    # Intersection point must be along `t` and `u`
+    t_num = (x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)
+    if (t_num > 0 and t_num > denom) or (t_num < 0 and t_num < denom):
+        return None
+
+    u_num = (x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)
+    if (u_num > 0 and u_num > denom) or (u_num < 0 and u_num < denom):
+        return None
+
+    # Choose either `t` or `u` intersection point (`t` chosen)
+    t = t_num / denom
+    return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
+
 def max_fovtile_index(radius: int) -> int:
     """Returns maximum FOV Octant index for given radius.
 
@@ -118,6 +167,154 @@ def max_fovtile_index(radius: int) -> int:
     in earnest starts from TID 1 (index 1)
     """
     return sum(n + 1 for n in range(1, radius + 1))
+
+
+def octant_transform_flt(
+    x: float, y: float, a: Octant, b: Octant
+) -> Tuple[float, float]:
+    """transforms (x,y) coordinates from one Octant to another.
+
+    This can also be used to tranform vectors, e.g. O1 (1, 0) to O2 (0, 1).
+    """
+    match a, b:
+        # --- Octant 1 --- #
+        case (Octant.O1, Octant.O1):
+            return x, y
+        case (Octant.O1, Octant.O2):
+            return y, x
+        case (Octant.O1, Octant.O3):
+            return -y, x
+        case (Octant.O1, Octant.O4):
+            return -x, y
+        case (Octant.O1, Octant.O5):
+            return -x, -y
+        case (Octant.O1, Octant.O6):
+            return -y, -x
+        case (Octant.O1, Octant.O7):
+            return y, -x
+        case (Octant.O1, Octant.O8):
+            return x, -y
+        # --- Octant 2 --- #
+        case (Octant.O2, Octant.O1):
+            return y, x
+        case (Octant.O2, Octant.O2):
+            return x, y
+        case (Octant.O2, Octant.O3):
+            return -x, y
+        case (Octant.O2, Octant.O4):
+            return -y, x
+        case (Octant.O2, Octant.O5):
+            return -y, -x
+        case (Octant.O2, Octant.O6):
+            return -x, -y
+        case (Octant.O2, Octant.O7):
+            return x, -y
+        case (Octant.O2, Octant.O8):
+            return y, -x
+        # --- Octant 3 --- #
+        case (Octant.O3, Octant.O3):
+            return x, y
+        case (Octant.O3, Octant.O4):
+            return -y, -x
+        case (Octant.O3, Octant.O5):
+            return -y, x
+        case (Octant.O3, Octant.O6):
+            return x, -y
+        case (Octant.O3, Octant.O7):
+            return -x, -y
+        case (Octant.O3, Octant.O8):
+            return y, x
+        case (Octant.O3, Octant.O1):
+            return y, -x
+        case (Octant.O3, Octant.O2):
+            return -x, y
+        # --- Octant 4 --- #
+        case (Octant.O4, Octant.O4):
+            return x, y
+        case (Octant.O4, Octant.O5):
+            return x, -y
+        case (Octant.O4, Octant.O1):
+            return -x, y
+        case (Octant.O4, Octant.O8):
+            return -x, -y
+        case (Octant.O4, Octant.O6):
+            return -y, x
+        case (Octant.O4, Octant.O3):
+            return -y, -x
+        case (Octant.O4, Octant.O7):
+            return y, x
+        case (Octant.O4, Octant.O2):
+            return y, -x
+        # --- Octant 5 --- #
+        case (Octant.O5, Octant.O5):
+            return x, y
+        case (Octant.O5, Octant.O4):
+            return x, -y
+        case (Octant.O5, Octant.O8):
+            return -x, y
+        case (Octant.O5, Octant.O1):
+            return -x, -y
+        case (Octant.O5, Octant.O7):
+            return -y, x
+        case (Octant.O5, Octant.O2):
+            return -y, -x
+        case (Octant.O5, Octant.O3):
+            return y, -x
+        case (Octant.O5, Octant.O6):
+            return y, x
+        # --- Octant 6 --- #
+        case (Octant.O6, Octant.O6):
+            return x, y
+        case (Octant.O6, Octant.O3):
+            return x, -y
+        case (Octant.O6, Octant.O7):
+            return -x, y
+        case (Octant.O6, Octant.O2):
+            return -x, -y
+        case (Octant.O6, Octant.O8):
+            return -y, x
+        case (Octant.O6, Octant.O1):
+            return -y, -x
+        case (Octant.O6, Octant.O4):
+            return y, -x
+        case (Octant.O6, Octant.O5):
+            return y, x
+        # --- Octant 7 --- #
+        case (Octant.O7, Octant.O7):
+            return x, y
+        case (Octant.O7, Octant.O2):
+            return x, -y
+        case (Octant.O7, Octant.O6):
+            return -x, y
+        case (Octant.O7, Octant.O3):
+            return -x, -y
+        case (Octant.O7, Octant.O1):
+            return -y, x
+        case (Octant.O7, Octant.O8):
+            return -y, -x
+        case (Octant.O7, Octant.O5):
+            return y, -x
+        case (Octant.O7, Octant.O4):
+            return y, x
+        # --- Octant 8 --- #
+        case (Octant.O8, Octant.O8):
+            return x, y
+        case (Octant.O8, Octant.O1):
+            return x, -y
+        case (Octant.O8, Octant.O5):
+            return -x, y
+        case (Octant.O8, Octant.O4):
+            return -x, -y
+        case (Octant.O8, Octant.O2):
+            return -y, x
+        case (Octant.O8, Octant.O7):
+            return -y, -x
+        case (Octant.O8, Octant.O6):
+            return y, -x
+        case (Octant.O8, Octant.O3):
+            return y, x
+
+    raise ValueError("Improper Octant coordinates provided!")
 
 
 def octant_transform(x: int, y: int, a: Octant, b: Octant) -> Tuple[int, int]:
