@@ -252,8 +252,6 @@ class FovTile:
         Tile index within the Octant and list of FOV tiles.
     `dpri, dsec`: int
         Relative (pri,sec) coordinates of the FOV tile compared to FOV origin.
-    `subtiles_xy`: int
-        Number of subtiles on x and y axes. If 8, there are (8x8 = 64) subtiles per tile.
     `visible_bits`: u64
         Bitflags spanning the visible Δsec/Δpri FIV lines for the tile.
     `blocking_bits`: u64

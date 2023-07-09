@@ -172,7 +172,7 @@ def max_fovtile_index(radius: int) -> int:
 def octant_transform_flt(
     x: float, y: float, a: Octant, b: Octant
 ) -> Tuple[float, float]:
-    """transforms (x,y) coordinates from one Octant to another.
+    """transforms (x,y) coordinates from Octant `a` to `b`.
 
     This can also be used to tranform vectors, e.g. O1 (1, 0) to O2 (0, 1).
     """
@@ -318,7 +318,7 @@ def octant_transform_flt(
 
 
 def octant_transform(x: int, y: int, a: Octant, b: Octant) -> Tuple[int, int]:
-    """transforms (x,y) coordinates from one Octant to another.
+    """transforms (x,y) coordinates from from Octant `a` to `b`.
 
     This can also be used to tranform vectors, e.g. O1 (1, 0) to O2 (0, 1).
     """
