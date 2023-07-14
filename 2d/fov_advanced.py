@@ -9,6 +9,7 @@ Key Ideas:
 - FOV is divided into 8 parts called octants (not to be confused with geometric term).
 - Uses line-line and line-rectangle intersections to determine which tile are visible.
 """
+import json
 import math
 import pygame, pygame.freetype
 from pygame import Vector2
@@ -16,6 +17,7 @@ from pygame.color import Color
 from pygame.freetype import Font
 from pygame.surface import Surface
 from helpers import (
+    Blockers,
     Coords,
     Line,
     Octant,
@@ -67,7 +69,8 @@ class Settings:
         self.qbits = qbits
         self.font = font
         self.font_color = font_color
-        self.fov_radius = fov_radius
+        # Cap max FOV radius to qbits - 1
+        self.fov_radius = min(fov_radius, qbits.value - 1)
         self.floor_color = Color(floor_color)
         self.fov_line_color = fov_line_color
         self.fov_line_trim_color = fov_line_trim_color
@@ -79,20 +82,6 @@ class Settings:
         self.unseen_color = Color(unseen_color)
         self.draw_tid = draw_tid
         self.xdims, self.ydims = map_dims.x, map_dims.y
-
-
-class Blockers:
-    """FOV blocking data for TileMap construction."""
-
-    def __init__(
-        self,
-        structure: int = 0,
-        wall_n: int = 0,
-        wall_w: int = 0,
-    ) -> None:
-        self.structure = structure
-        self.wall_n = wall_n
-        self.wall_w = wall_w
 
 
 class TileMap:
@@ -169,17 +158,86 @@ class FovMap:
 
     `qbits`: int
         Number of bits used to quantize FOV lines. Higher = more granular FOV.
+        The Qbits value must be >= the FOV radius
     """
 
-    def __init__(self, qbits: QBits) -> None:
-        self.octant_1 = FovOctant(Octant.O1, qbits)
-        self.octant_2 = FovOctant(Octant.O2, qbits)
-        self.octant_3 = FovOctant(Octant.O3, qbits)
-        self.octant_4 = FovOctant(Octant.O4, qbits)
-        self.octant_5 = FovOctant(Octant.O5, qbits)
-        self.octant_6 = FovOctant(Octant.O6, qbits)
-        self.octant_7 = FovOctant(Octant.O7, qbits)
-        self.octant_8 = FovOctant(Octant.O8, qbits)
+    def __init__(self, o1, o2, o3, o4, o5, o6, o7, o8) -> None:
+        self.octant_1 = o1
+        self.octant_2 = o2
+        self.octant_3 = o3
+        self.octant_4 = o4
+        self.octant_5 = o5
+        self.octant_6 = o6
+        self.octant_7 = o7
+        self.octant_8 = o8
+
+    @staticmethod
+    def new(qbits: QBits):
+        o1 = FovOctant.new(Octant.O1, qbits)
+        o2 = FovOctant.new(Octant.O2, qbits)
+        o3 = FovOctant.new(Octant.O3, qbits)
+        o4 = FovOctant.new(Octant.O4, qbits)
+        o5 = FovOctant.new(Octant.O5, qbits)
+        o6 = FovOctant.new(Octant.O6, qbits)
+        o7 = FovOctant.new(Octant.O7, qbits)
+        o8 = FovOctant.new(Octant.O8, qbits)
+
+        return FovMap(o1, o2, o3, o4, o5, o6, o7, o8)
+
+    @staticmethod
+    def from_json(s: str):
+        """Deserializes `FovMap` from JSON string."""
+        d = json.loads(s)
+        o1 = FovOctant.from_dict(d["octant_1"])
+        o2 = FovOctant.from_dict(d["octant_2"])
+        o3 = FovOctant.from_dict(d["octant_3"])
+        o4 = FovOctant.from_dict(d["octant_4"])
+        o5 = FovOctant.from_dict(d["octant_5"])
+        o6 = FovOctant.from_dict(d["octant_6"])
+        o7 = FovOctant.from_dict(d["octant_7"])
+        o8 = FovOctant.from_dict(d["octant_8"])
+
+        return FovMap(o1, o2, o3, o4, o5, o6, o7, o8)         
+
+    @staticmethod
+    def from_json_file(fp: str):
+        """Deserializes `FovMap` from JSON file at path `fp`."""
+        with open(fp, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+            o1 = FovOctant.from_dict(d["octant_1"])
+            o2 = FovOctant.from_dict(d["octant_2"])
+            o3 = FovOctant.from_dict(d["octant_3"])
+            o4 = FovOctant.from_dict(d["octant_4"])
+            o5 = FovOctant.from_dict(d["octant_5"])
+            o6 = FovOctant.from_dict(d["octant_6"])
+            o7 = FovOctant.from_dict(d["octant_7"])
+            o8 = FovOctant.from_dict(d["octant_8"])
+
+            return FovMap(o1, o2, o3, o4, o5, o6, o7, o8)    
+
+    def to_json(self) -> str:
+        """Serializes `FovMap` to JSON string."""
+        return json.dumps(self.to_dict())
+
+    def to_json_file(self, fp: str):
+        """Serializes `FovMap` to JSON file with filepath `fp`."""
+        with open (fp, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f)
+
+    def to_dict(self) -> Dict:
+        """Converts `FovMap` to dictionary form for serialization."""
+        output = {
+            "octant_1": self.octant_1.to_dict(),
+            "octant_2": self.octant_2.to_dict(),
+            "octant_3": self.octant_3.to_dict(),
+            "octant_4": self.octant_4.to_dict(),
+            "octant_5": self.octant_5.to_dict(),
+            "octant_6": self.octant_6.to_dict(),
+            "octant_7": self.octant_7.to_dict(),
+            "octant_8": self.octant_8.to_dict(),
+        }
+
+        return output
 
 
 class FovOctant:
@@ -203,23 +261,46 @@ class FovOctant:
         for a radius of 22.
     """
 
-    def __init__(self, octant: Octant, qbits: QBits):
-        self.tiles: List[FovTile] = []
-        self.max_fov_ix: List[int] = []
+    def __init__(self, tiles: List, max_fov_ix: List[int]):
+        self.tiles = tiles
+        self.max_fov_ix = max_fov_ix
+
+    @staticmethod
+    def new(octant: Octant, qbits: QBits):
+        tiles: List[FovTile] = []
+        max_fov_ix: List[int] = []
         slice_threshold = 1
+        fov_ix = 1
         tix = 0
 
         radius = qbits.value - 1
         fov_lines = FovLines(radius, octant)
 
         for dpri in range(radius + 1):
-            self.max_fov_ix.append(tix)
+            max_fov_ix.append(fov_ix)
 
             for dsec in range(slice_threshold):
-                tile = FovTile(tix, dpri, dsec, octant, fov_lines)
-                self.tiles.append(tile)
+                tile = FovTile.new(tix, dpri, dsec, octant, fov_lines)
+                tiles.append(tile)
                 tix += 1
             slice_threshold += 1
+            fov_ix += slice_threshold
+
+        return FovOctant(tiles, max_fov_ix)
+
+    @staticmethod
+    def from_dict(d: Dict):
+        tiles = [FovTile.from_dict(td) for td in d["tiles"]]
+        max_fov_ix = [i for i in d["max_fov_ix"]]
+
+        return FovOctant(tiles, max_fov_ix)
+
+    def to_dict(self) -> Dict:
+        """Converts `FovOctant` to dictionary form for serialization."""
+        return {
+            "tiles": [t.to_dict() for t in self.tiles],
+            "max_fov_ix": self.max_fov_ix
+        }
 
 
 class FovLines:
@@ -276,50 +357,104 @@ class FovTile:
     )
 
     def __init__(
-        self, tix: int, dpri: int, dsec: int, octant: Octant, fov_lines: FovLines
+        self, 
+        tix,
+        rx,
+        ry,
+        dpri,
+        dsec,
+        wall_n_bits,
+        wall_w_bits,
+        structure_bits,
+        wall_n_line,
+        wall_w_line,
+        structure_lines,
+        visible_bits,
     ):
+        self.rx = rx
+        self.ry = ry
+        self.tix = tix
+        self.dpri = dpri
+        self.dsec = dsec
+        self.wall_n_bits = wall_n_bits
+        self.wall_w_bits = wall_w_bits
+        self.structure_bits = structure_bits
+        self.wall_n_line = wall_n_line
+        self.wall_w_line = wall_w_line
+        self.structure_lines = structure_lines
+        self.visible_bits = visible_bits
+
+    def __repr__(self) -> str:
+        return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), structure: {self.structure_lines} wall N/W: {self.wall_n_line}/{self.wall_w_line}"
+
+    @staticmethod
+    def new(tix: int, dpri: int, dsec: int, octant: Octant, fov_lines: FovLines):
         # Octant-adjusted relative x/y used to select tile in TileMap
         # dpri is needed for wall visibility calculations
         # dsec is needed for slice filter and bounds checks in FOV calc
         rx, ry = pri_sec_to_relative(dpri, dsec, octant)
-        self.rx, self.ry = int(rx), int(ry)
-        self.dpri = dpri
-        self.dsec = dsec
-        self.tix = tix
 
         wall_line_n = Line(rx, ry, rx + 1.0, ry)
         wall_line_w = Line(rx, ry, rx, ry + 1.0)
-        structure_lines = self.structure_line_pair(rx, ry, octant)
-
-        self.wall_n_line = wall_line_n
-        self.wall_w_line = wall_line_w
-        self.structure_lines = structure_lines
-        self.wall_n_bits: int = 0
-        self.wall_w_bits: int = 0
-        self.structure_bits: int = 0
-        self.visible_bits: int = 0
+        structure_lines = FovTile.structure_line_pair(rx, ry, octant)
+               
+        wall_n_bits: int = 0
+        wall_w_bits: int = 0
+        structure_bits: int = 0
+        visible_bits: int = 0
 
         # Set blocking and visible bits from walls and structures
         for ix, fov_line in enumerate(fov_lines.lines):
             bit_ix = 1 << ix
 
             if line_line_intersection(fov_line, wall_line_n):
-                self.wall_n_bits |= bit_ix
+                wall_n_bits |= bit_ix
 
             if line_line_intersection(fov_line, wall_line_w):
-                self.wall_w_bits |= bit_ix
+                wall_w_bits |= bit_ix
 
             if line_line_intersection(
                 fov_line, structure_lines[0]
             ) or line_line_intersection(fov_line, structure_lines[1]):
-                self.structure_bits |= bit_ix
-                self.visible_bits |= bit_ix
+                structure_bits |= bit_ix
+                visible_bits |= bit_ix
 
-    def __repr__(self) -> str:
-        return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), structure: {self.structure_lines} wall N/W: {self.wall_n_line}/{self.wall_w_line}"
+        return FovTile(
+            tix,
+            int(rx),
+            int(ry),
+            dpri,
+            dsec,
+            wall_n_bits,
+            wall_w_bits,
+            structure_bits,
+            wall_line_n,
+            wall_line_w,
+            structure_lines,
+            visible_bits
+        )
 
+
+    @staticmethod
+    def from_dict(d: Dict):
+        return FovTile(
+            d["tix"],
+            d["rx"],
+            d["ry"],
+            d["dpri"],
+            d["dsec"],
+            d["wall_n_bits"],
+            d["wall_w_bits"],
+            d["structure_bits"],
+            d["wall_n_line"],
+            d["wall_w_line"],
+            d["structure_lines"],
+            d["visible_bits"],
+        )
+
+    @staticmethod
     def structure_line_pair(
-        self, rx: int, ry: int, octant: Octant
+        rx: int, ry: int, octant: Octant
     ) -> Tuple[Line, Line]:
         """Returns two closest lines representing the structure for FOV calculation."""
         match octant:
@@ -340,6 +475,22 @@ class FovTile:
 
         return result
 
+    def to_dict(self) -> Dict:
+        """Returns `FovTile` in dictionary form for serialization."""
+        return {
+            "tix": self.tix,
+            "rx": self.rx,
+            "ry": self.ry,
+            "dpri": self.dpri,
+            "dsec": self.dsec,
+            "wall_n_bits": self.wall_n_bits,
+            "wall_w_bits": self.wall_w_bits,
+            "structure_bits": self.structure_bits,
+            "wall_n_line": self.wall_n_line.to_dict(),
+            "wall_w_line": self.wall_w_line.to_dict(),
+            "structure_lines": (self.structure_lines[0].to_dict(), self.structure_lines[1].to_dict()),
+            "visible_bits": self.visible_bits,
+        }
 
 #   #######   #######      ##     ##    ##
 #   ##    ##  ##    ##   ##  ##   ##    ##
@@ -609,7 +760,7 @@ def fov_calc(
 ) -> Dict[Tuple[int, int], VisibleTile]:
     """Returns visible tiles (and substructures) from given origin (ox, oy).
 
-    #### Parameters
+    ### Parameters
 
      `ox`, `oy`: int
          Origin coordinates of the current Unit.
@@ -666,15 +817,15 @@ def fov_calc(
 def get_visible_tiles_1(
     ox: int,
     oy: int,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 1."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -757,15 +908,15 @@ def get_visible_tiles_1(
 def get_visible_tiles_2(
     ox: int,
     oy: int,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 2."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -849,15 +1000,15 @@ def get_visible_tiles_3(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 3."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -914,15 +1065,15 @@ def get_visible_tiles_4(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 4."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1002,15 +1153,15 @@ def get_visible_tiles_56(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octants 5 and 6."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1057,15 +1208,15 @@ def get_visible_tiles_7(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 7."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1147,15 +1298,15 @@ def get_visible_tiles_8(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 8."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1249,9 +1400,16 @@ def run_game(tilemap: TileMap, settings: Settings):
     player_img = pygame.image.load("assets/paperdoll_1.png").convert_alpha()
 
     # --- Map Setup --- #
+    match settings.qbits:
+        case QBits.Q32:
+            fov_map = FovMap.from_json_file("fovmaps/fovmap2d_q32.json")
+        case QBits.Q64:
+            fov_map = FovMap.from_json_file("fovmaps/fovmap2d_q64.json")
+        case QBits.Q128:
+            fov_map = FovMap.from_json_file("fovmaps/fovmap2d_q128.json")
+            
     radius = settings.fov_radius
     tile_size = settings.tile_size
-    fov_map = FovMap(settings.qbits)
     visible_tiles = fov_calc(0, 0, tilemap, fov_map, radius)
 
     # --- HUD Setup --- #

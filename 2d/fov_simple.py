@@ -494,10 +494,6 @@ def quantized_slopes_narrow(
             return max(math.ceil(slope_lo * 127.0), 0), min(
                 math.floor(slope_hi * 127.0), 127
             )
-        case QBits.Q256:
-            return max(math.ceil(slope_lo * 255.0), 0), min(
-                math.floor(slope_hi * 255.0), 255
-            )
 
 
 def quantized_slopes_wide(
@@ -522,10 +518,6 @@ def quantized_slopes_wide(
         case QBits.Q128:
             return max(math.floor(slope_lo * 127.0), 0), min(
                 math.ceil(slope_hi * 127.0), 127
-            )
-        case QBits.Q256:
-            return max(math.floor(slope_lo * 255.0), 0), min(
-                math.ceil(slope_hi * 255.0), 255
             )
 
 

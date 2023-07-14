@@ -3,6 +3,20 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Self, Tuple
 
+class Blockers:
+    """FOV blocking data for TileMap construction."""
+
+    def __init__(
+        self,
+        structure: int = 0,
+        wall_n: int = 0,
+        wall_w: int = 0,
+    ) -> None:
+        self.structure = structure
+        self.wall_n = wall_n
+        self.wall_w = wall_w
+        
+
 @dataclass
 class Coords:
     """2D map integer coordinates."""
@@ -116,9 +130,8 @@ class QBits(Enum):
 
     Q32 = 32  # Least granular
     Q64 = 64
-    Q128 = 128
-    Q256 = 256  # Most granular
-
+    Q128 = 128 # Most granular
+    
 
 class VisibleTile:
     """Describes visible substructures inside a visible tile."""
