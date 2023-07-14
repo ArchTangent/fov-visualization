@@ -14,6 +14,7 @@ from pygame.color import Color
 from pygame.freetype import Font
 from pygame.surface import Surface
 from helpers import (
+    Blockers,
     Coords,
     FovLineType,
     Octant,
@@ -75,20 +76,6 @@ class Settings:
         self.unseen_color = Color(unseen_color)
         self.draw_tid = draw_tid
         self.xdims, self.ydims = map_dims.x, map_dims.y
-
-
-class Blockers:
-    """FOV blocking data for TileMap construction."""
-
-    def __init__(
-        self,
-        structure: int = 0,
-        wall_n: int = 0,
-        wall_w: int = 0,
-    ) -> None:
-        self.structure = structure
-        self.wall_n = wall_n
-        self.wall_w = wall_w
 
 
 class TileMap:
@@ -192,9 +179,6 @@ class FovOctant:
 
     ### Parameters
 
-    `qbits`: int
-        Number of bits used to quantize FOV lines. Higher = more granular FOV.
-        For qbits = 64, the FOV radius is from 0-63.
     `octant`: Octant
         One of 8 Octants represented by this instance.
 
@@ -212,18 +196,20 @@ class FovOctant:
         self.tiles: List[FovTile] = []
         self.max_fov_ix: List[int] = []
         slice_threshold = 1
+        fov_ix = 1
         tix = 0
 
         fov_lines = FovLines(radius, subtiles, octant, fov_line_type)
 
         for dpri in range(radius + 1):
-            self.max_fov_ix.append(tix)
+            self.max_fov_ix.append(fov_ix)
 
             for dsec in range(slice_threshold):
                 tile = FovTile(tix, dpri, dsec, subtiles, octant, fov_lines)
                 self.tiles.append(tile)
                 tix += 1
             slice_threshold += 1
+            fov_ix += slice_threshold
 
 
 class FovLines:
@@ -657,7 +643,7 @@ def fov_calc(
 ) -> Dict[Tuple[int, int], VisibleTile]:
     """Returns visible tiles (and substructures) from given origin (ox, oy).
 
-    #### Parameters
+    ### Parameters
 
      `ox`, `oy`: int
          Origin coordinates of the current Unit.
@@ -714,15 +700,15 @@ def fov_calc(
 def get_visible_tiles_1(
     ox: int,
     oy: int,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 1."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -805,15 +791,15 @@ def get_visible_tiles_1(
 def get_visible_tiles_2(
     ox: int,
     oy: int,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 2."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -897,15 +883,15 @@ def get_visible_tiles_3(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 3."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -962,15 +948,15 @@ def get_visible_tiles_4(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 4."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1050,15 +1036,15 @@ def get_visible_tiles_56(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octants 5 and 6."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1105,15 +1091,15 @@ def get_visible_tiles_7(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 7."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec
     visible_tiles = []
     blocked_bits: int = 0
 
@@ -1195,15 +1181,15 @@ def get_visible_tiles_8(
     ox: int,
     oy: int,
     origin: Tile,
-    max_pri: int,
-    max_sec: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
     fov_octant: FovOctant,
 ) -> List[Tuple[int, int, VisibleTile]]:
     """Returns list of visible tiles and substructures in Octant 8."""
     fov_tiles = fov_octant.tiles
-    pri_ix = fov_octant.max_fov_ix[max_pri + 1]
-    sec_ix = max_sec + 1
+    pri_ix = fov_octant.max_fov_ix[max_dpri]
+    sec_ix = max_dsec + 1
     visible_tiles = []
     blocked_bits: int = 0
 
