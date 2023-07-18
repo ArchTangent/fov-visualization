@@ -138,7 +138,7 @@ class Tile:
 
 class FovMap:
     """2D FOV map of FovTiles used with TileMap to determine visible tiles.
-    
+
     ### Parameters
 
     `radius`: int
@@ -208,20 +208,9 @@ class FovTile:
         # Blocking and visible bit ranges are all based on Octant 1
         slope_lo, slope_hi = slopes_by_relative_coords(dpri, dsec)
 
-        # Blocking bits are wider than visible bits (restrictive)
-        self.blocking_bit_lo, self.blocking_bit_hi = quantized_slopes_wide(
-            slope_lo, slope_hi, qbits
-        )
-        self.blocking_bits = set_bits_from_range(
-            self.blocking_bit_lo, self.blocking_bit_hi
-        )
+        self.blocking_bits = quantized_slopes(slope_lo, slope_hi, qbits)
 
-        self.visible_bit_lo, self.visible_bit_hi = quantized_slopes_narrow(
-            slope_lo, slope_hi, qbits
-        )
-        self.visible_bits = set_bits_from_range(
-            self.visible_bit_lo, self.visible_bit_hi
-        )
+        self.visible_bits = quantized_slopes(slope_lo, slope_hi, qbits)
 
         # Octant-adjusted relative x/y used to select tile in TileMap
         # dsec is needed for slice filter and bounds checks in FOV calc
@@ -231,7 +220,7 @@ class FovTile:
         self.tix = tix
 
     def __repr__(self) -> str:
-        return f"FovTile {self.tix} rel: ({self.rx},{self.ry}), blk: {self.blocking_bit_lo}-{self.blocking_bit_hi}, vis: {self.visible_bit_lo}-{self.visible_bit_hi}"
+        return f"FovTile {self.tix} rel: ({self.rx},{self.ry})"
 
 
 #   ########    ####    ##    ##
@@ -252,7 +241,7 @@ def fov_calc(
     - the player's own tile is always visible.
 
     ### Parameters
-    
+
     `ox`, `oy`: int
         Origin coordinates of the current Unit.
     `radius`: int
@@ -325,49 +314,23 @@ def get_visible_tiles(
     return visible_tiles
 
 
-def quantized_slopes_narrow(
-    slope_lo: float, slope_hi: float, bits: QBits
-) -> Tuple[int, int]:
-    """Returns low/high narrow quantized slopes bits based on number of Q bits.
+def quantized_slopes(slope_lo: float, slope_hi: float, qbits: QBits) -> int:
+    """Returns dpri/dsec slope in a 32-to-128-bit integer bitfield.
 
-    A narrow slope rounds the low slope up and the high slope down.
-    This is useful for visible bits in FOV calculation.
-
-    See: "2D Dynamic FOV - Quantized 64-bit.ods" file.
+    Used for blocking_bits and visible_bits, these slope ranges round the
+    low slope up and the high slope down (narrow).
     """
-    match bits:
-        case QBits.Q32:
-            return math.ceil(slope_lo * 31.0), min(math.floor(slope_hi * 31.0), 31)
-        case QBits.Q64:
-            return math.ceil(slope_lo * 63.0), min(math.floor(slope_hi * 63.0), 63)
-        case QBits.Q128:
-            return max(math.ceil(slope_lo * 127.0), 0), min(
-                math.floor(slope_hi * 127.0), 127
-            )
+    slopes: int = 0
 
-def quantized_slopes_wide(
-    slope_lo: float, slope_hi: float, bits: QBits
-) -> Tuple[int, int]:
-    """Returns low/high wide quantized slopes bits based on number of Q bits.
+    bits = qbits.value
 
-    A wide slope rounds the low slope down and the high slope up.
-    This is useful for blocking bits in FOV calculation.
+    bit_lo = max(math.ceil(slope_lo * bits), 0)
+    bit_hi = min(math.floor(slope_hi * bits), bits)
 
-    See: "2D Dynamic FOV - Quantized 64-bit.ods" file.
-    """
-    match bits:
-        case QBits.Q32:
-            return max(math.floor(slope_lo * 31.0), 0), min(
-                math.ceil(slope_hi * 31.0), 31
-            )
-        case QBits.Q64:
-            return max(math.floor(slope_lo * 63.0), 0), min(
-                math.ceil(slope_hi * 63.0), 63
-            )
-        case QBits.Q128:
-            return max(math.floor(slope_lo * 127.0), 0), min(
-                math.ceil(slope_hi * 127.0), 127
-            )
+    for b in range(bit_lo, bit_hi + 1):
+        slopes |= 2**b
+
+    return slopes
 
 
 def set_bits_from_range(lo_bit: int, hi_bit: int) -> int:
@@ -479,6 +442,7 @@ def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_siz
     """Renders the player (always visible) on the Tilemap."""
     screen.blit(player_img, (px * tile_size, py * tile_size))
 
+
 #    ######      ##     ##    ##  ########
 #   ##         ##  ##   ###  ###  ##
 #   ##   ###  ##    ##  ## ## ##  ######
@@ -583,6 +547,7 @@ if __name__ == "__main__":
         Font(None, size=16),
         Color("snow"),
         fov_radius=63,
+        qbits=QBits.Q32,
     )
 
     run_game(blocked, settings)

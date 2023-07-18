@@ -36,7 +36,7 @@ If they are to be used, it should only be for small FOV radii, in 2D, with few b
 import fov_simple, fov_subtile, fov_advanced
 from pygame.color import Color
 from pygame.freetype import Font
-from helpers import Blockers, Coords, FovLineType, QBits
+from helpers import Blockers, Coords, QBits
 from typing import Callable, Dict, List, Tuple
 import random
 import time
@@ -271,7 +271,7 @@ def run_benchmark(
     s = settings
     print(f"--- {name} benchmarks ---")
     print(
-        f"Dims = {s.dims.x,}x{s.dims.y}, density = {s.pct_blocked}, maps = {s.maps}, radius = {s.radius}"
+        f"Dims = {s.dims.x}x{s.dims.y}, density = {s.pct_blocked}, maps = {s.maps}, radius = {s.radius}\n"
     )
 
     frames = settings.maps * 10
