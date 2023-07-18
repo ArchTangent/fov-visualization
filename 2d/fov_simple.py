@@ -150,40 +150,14 @@ class FovMap:
     def __init__(self, radius: int, qbits: QBits) -> None:
         if radius < 2:
             raise ValueError("Use max FOV radius of 2 or higher!")
-        self.octant_1 = FovOctant(radius, Octant.O1, qbits)
-        self.octant_2 = FovOctant(radius, Octant.O2, qbits)
-        self.octant_3 = FovOctant(radius, Octant.O3, qbits)
-        self.octant_4 = FovOctant(radius, Octant.O4, qbits)
-        self.octant_5 = FovOctant(radius, Octant.O5, qbits)
-        self.octant_6 = FovOctant(radius, Octant.O6, qbits)
-        self.octant_7 = FovOctant(radius, Octant.O7, qbits)
-        self.octant_8 = FovOctant(radius, Octant.O8, qbits)
-
-
-class FovOctant:
-    """2D FOV Octant with TileMap coordinate translations and blocking bits.
-
-    ### Parameters
-
-    `radius`: int
-        Maximum in-game FOV radius.
-    `octant`: Octant
-        One of 8 Octants represented by this instance.
-    `qbits`: QBits
-        Defines the granularity (read: accuracy) of the FOV calculation.
-    """
-
-    def __init__(self, radius: int, octant: Octant, qbits: QBits):
-        self.tiles: List[FovTile] = []
-        slice_threshold = 2
-        tix = 1
-
-        for dpri in range(1, radius):
-            for dsec in range(slice_threshold):
-                tile = FovTile(tix, dpri, dsec, octant, qbits)
-                self.tiles.append(tile)
-                tix += 1
-            slice_threshold += 1
+        self.octant_1 = FovOctant.new(radius, Octant.O1, qbits)
+        self.octant_2 = FovOctant.new(radius, Octant.O2, qbits)
+        self.octant_3 = FovOctant.new(radius, Octant.O3, qbits)
+        self.octant_4 = FovOctant.new(radius, Octant.O4, qbits)
+        self.octant_5 = FovOctant.new(radius, Octant.O5, qbits)
+        self.octant_6 = FovOctant.new(radius, Octant.O6, qbits)
+        self.octant_7 = FovOctant.new(radius, Octant.O7, qbits)
+        self.octant_8 = FovOctant.new(radius, Octant.O8, qbits)
 
 
 class FovTile:
@@ -204,6 +178,8 @@ class FovTile:
         Bitflags spanning the Δsec/Δpri slope range blocked by the tile (if wall present).
     """
 
+    __slots__ = "tix", "rx", "ry", "dsec", "blocking_bits", "visible_bits"
+
     def __init__(self, tix: int, dpri: int, dsec: int, octant: Octant, qbits: QBits):
         # Blocking and visible bit ranges are all based on Octant 1
         slope_lo, slope_hi = slopes_by_relative_coords(dpri, dsec)
@@ -221,6 +197,50 @@ class FovTile:
 
     def __repr__(self) -> str:
         return f"FovTile {self.tix} rel: ({self.rx},{self.ry})"
+
+
+class FovOctant:
+    """2D FOV Octant with TileMap coordinate translations and blocking bits.
+
+    ### Parameters
+
+    `radius`: int
+        Maximum in-game FOV radius.
+    `octant`: Octant
+        One of 8 Octants represented by this instance.
+    `qbits`: QBits
+        Defines the granularity (read: accuracy) of the FOV calculation.
+    """
+
+    def __init__(self, tiles: List[FovTile], max_fov_ix: List[int]):
+        self.tiles = tiles
+        self.max_fov_ix = max_fov_ix
+
+    @staticmethod
+    def new(radius: int, octant: Octant, qbits: QBits):
+        tiles: List[FovTile] = []
+        max_fov_ix: List[int] = [0]
+        fov_ix = 0
+        tix = 1
+        limit = radius * radius
+        m = 0.5
+
+        for dpri in range(1, radius + 1):
+            for dsec in range(dpri + 1):
+                if dpri == 0:
+                    r = (dpri - m) * (dpri - m) + (dsec * dsec)
+                else:
+                    r = (dpri - m) * (dpri - m) + (dsec - m) * (dsec - m)
+
+                if r < limit:
+                    tile = FovTile(tix, dpri, dsec, octant, qbits)
+                    tiles.append(tile)
+                    fov_ix += 1
+                    tix += 1
+
+            max_fov_ix.append(fov_ix)
+
+        return FovOctant(tiles, max_fov_ix)
 
 
 #   ########    ####    ##    ##
@@ -247,34 +267,33 @@ def fov_calc(
     `radius`: int
         Current unit's FOV radius.
     """
+    xdims, ydims = tilemap.xdims, tilemap.ydims
     visible_tiles = {(ox, oy)}
     tm = tilemap
 
-    # --- Octants 1-8 --- #
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_1.tiles, Octant.O1, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_2.tiles, Octant.O2, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_3.tiles, Octant.O3, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_4.tiles, Octant.O4, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_5.tiles, Octant.O5, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_6.tiles, Octant.O6, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_7.tiles, Octant.O7, radius)
-    )
-    visible_tiles.update(
-        get_visible_tiles(ox, oy, tm, fov_map.octant_8.tiles, Octant.O8, radius)
-    )
+    # --- Octants 1-2 --- #
+    max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O1, radius)
+
+    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, tm, fov_map.octant_1))
+    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, tm, fov_map.octant_2))
+
+    # --- Octants 3-4 --- #
+    max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O4, radius)
+
+    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, tm, fov_map.octant_3))
+    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, tm, fov_map.octant_4))
+
+    # --- Octants 5-6 --- #
+    max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O5, radius)
+
+    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, tm, fov_map.octant_5))
+    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, tm, fov_map.octant_6))
+
+    # --- Octants 7-8 --- #
+    max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O8, radius)
+
+    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, tm, fov_map.octant_7))
+    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, tm, fov_map.octant_8))
 
     return visible_tiles
 
@@ -282,10 +301,10 @@ def fov_calc(
 def get_visible_tiles(
     ox: int,
     oy: int,
+    max_dpri: int,
+    max_dsec: int,
     tilemap: TileMap,
-    fov_tiles: List[FovTile],
-    octant: Octant,
-    radius: int,
+    fov_octant: FovOctant,
 ) -> List[Tuple[int, int]]:
     """Returns list of visible tiles in a given Octant using `FovTile`s.
 
@@ -294,20 +313,20 @@ def get_visible_tiles(
     `radius`: int
         Current unit's FOV radius.
     """
-    xdims, ydims = tilemap.xdims, tilemap.ydims
+    pri_ix_max = fov_octant.max_fov_ix[max_dpri]
+    fov_tiles = fov_octant.tiles
     blocked_bits: int = 0
     visible_tiles = []
 
-    max_pri, max_sec = boundary_radii(ox, oy, xdims, ydims, octant, radius)
-    pri_ix, sec_ix = max_fovtile_index(max_pri), max_sec + 1
+    for fov_tile in fov_tiles[:pri_ix_max]:
+        if fov_tile.dsec > max_dsec:
+            continue
 
-    for fov_tile in fov_tiles[:pri_ix]:
-        if fov_tile.dsec < sec_ix and tile_is_visible(
-            fov_tile.visible_bits, blocked_bits
-        ):
+        if tile_is_visible(fov_tile.visible_bits, blocked_bits):
             tx, ty = ox + fov_tile.rx, oy + fov_tile.ry
             tile = tilemap.tile_at(tx, ty)
             visible_tiles.append((tx, ty))
+
             if tile.blocks_sight:
                 blocked_bits |= fov_tile.blocking_bits
 
@@ -547,7 +566,7 @@ if __name__ == "__main__":
         Font(None, size=16),
         Color("snow"),
         fov_radius=63,
-        qbits=QBits.Q32,
+        qbits=QBits.Q128,
     )
 
     run_game(blocked, settings)
