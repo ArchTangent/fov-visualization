@@ -18,6 +18,7 @@ from helpers import (
     Coords,
     FovLineType,
     Octant,
+    QBits,
     VisibleTile,
     boundary_radii,
     octant_transform,
@@ -36,12 +37,13 @@ class Settings:
         width: int,
         height: int,
         map_dims: Coords,
-        tile_size: int,
-        line_width: int,
-        subtiles_xy: int,
         font: Font,
         font_color: Color,
         fov_radius: int = 63,
+        tile_size: int = 64,
+        subtiles_xy: int = 8,
+        line_width: int = 1,
+        qbits: QBits = QBits.Q64,
         fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
@@ -61,6 +63,7 @@ class Settings:
         self.line_width = line_width
         self.subtiles_xy = subtiles_xy
         self.subtile_size = tile_size // subtiles_xy
+        self.qbits = qbits
         self.font = font
         self.font_color = font_color
         self.fov_radius = fov_radius
@@ -1273,14 +1276,14 @@ def run_game(tilemap: TileMap, settings: Settings):
     # --- Pygame setup --- #
     pygame.init()
     pygame.display.set_caption("2D Subtile FOV")
-    screen = pygame.display.set_mode((1280, 720))
+    screen = pygame.display.set_mode((settings.width, settings.height))
     pygame.key.set_repeat(0)
     clock = pygame.time.Clock()
     running = True
 
     # --- Player Setup --- #
     px, py = 0, 0
-    player_img = pygame.image.load("assets/paperdoll_1.png").convert_alpha()
+    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
 
     # --- Map Setup --- #
     radius = settings.fov_radius
@@ -1368,7 +1371,7 @@ def run_game(tilemap: TileMap, settings: Settings):
 #   ##    ##  ##    ##  ########  ##    ##
 
 if __name__ == "__main__":
-    print("\n=====  2D Subpixel FOV Testing  =====\n")
+    print("\n=====  2D Subtile FOV Testing  =====\n")
     pygame.freetype.init()
     # FOV Blockers: (structure: int, north_wall: int, west_wall: int)
     blocked: Dict[Tuple[int, int], Blockers] = {
@@ -1386,11 +1389,9 @@ if __name__ == "__main__":
         1280,
         720,
         Coords(16, 9),
-        64,
-        1,
-        8,
         Font(None, size=16),
         Color("snow"),
+        subtiles_xy=8,
         fov_line_type=FovLineType.NORMAL,
     )
     tilemap = TileMap(blocked, settings)

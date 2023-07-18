@@ -8,6 +8,7 @@ Key Ideas:
 - As # of FOV bits goes up, FOV granularity and generation time go up. 64 is a good value.
 - FOV is divided into 8 parts called octants (not to be confused with geometric term).
 - Uses line-line and line-rectangle intersections to determine which tile are visible.
+- In-game max FOV is limited to `QBits - 1` (32 qbits -> 31 radius)
 """
 import json
 import math
@@ -19,6 +20,7 @@ from pygame.surface import Surface
 from helpers import (
     Blockers,
     Coords,
+    FovLineType,
     Line,
     Octant,
     QBits,
@@ -41,13 +43,14 @@ class Settings:
         width: int,
         height: int,
         map_dims: Coords,
-        tile_size: int,
-        line_width: int,
-        subtiles_xy: int,
-        qbits: QBits,
         font: Font,
         font_color: Color,
         fov_radius: int = 63,
+        tile_size: int = 64,
+        subtiles_xy: int = 8,
+        line_width: int = 1,
+        qbits: QBits = QBits.Q64,
+        fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
         fov_line_color="slateblue1",
@@ -61,7 +64,7 @@ class Settings:
     ) -> None:
         self.width = width
         self.height = height
-        self.map_dims = map_dims
+        self.xdims, self.ydims = map_dims.x, map_dims.y
         self.tile_size = tile_size
         self.line_width = line_width
         self.subtiles_xy = subtiles_xy
@@ -72,6 +75,7 @@ class Settings:
         # Cap max FOV radius to qbits - 1
         self.fov_radius = min(fov_radius, qbits.value - 1)
         self.floor_color = Color(floor_color)
+        self.fov_line_type = fov_line_type
         self.fov_line_color = fov_line_color
         self.fov_line_trim_color = fov_line_trim_color
         self.floor_trim_color = Color(floor_trim_color)
@@ -81,7 +85,6 @@ class Settings:
         self.structure_trim_color = Color(structure_trim_color)
         self.unseen_color = Color(unseen_color)
         self.draw_tid = draw_tid
-        self.xdims, self.ydims = map_dims.x, map_dims.y
 
 
 class TileMap:
@@ -1390,14 +1393,14 @@ def run_game(tilemap: TileMap, settings: Settings):
     # --- Pygame setup --- #
     pygame.init()
     pygame.display.set_caption("2D Advanced FOV")
-    screen = pygame.display.set_mode((1280, 720))
+    screen = pygame.display.set_mode((settings.width, settings.height))
     pygame.key.set_repeat(0)
     clock = pygame.time.Clock()
     running = True
 
     # --- Player Setup --- #
     px, py = 0, 0
-    player_img = pygame.image.load("assets/paperdoll_1.png").convert_alpha()
+    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
 
     # --- Map Setup --- #
     match settings.qbits:
@@ -1509,13 +1512,10 @@ if __name__ == "__main__":
     settings = Settings(
         1280,
         720,
-        Coords(16, 9),
-        64,
-        1,
-        8,
-        QBits.Q64,
+        Coords(128, 128),
         Font(None, size=16),
         Color("snow"),
     )
+
     tilemap = TileMap(blocked, settings)
     run_game(tilemap, settings)
