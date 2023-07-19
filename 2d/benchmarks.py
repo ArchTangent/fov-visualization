@@ -130,10 +130,10 @@ def bench_simple_2d_q32(bs: BenchSettings) -> float:
         Font(None, size=16),
         Color("snow"),
         qbits=QBits.Q32,
-        fov_radius=bs.radius,
+        max_radius=bs.radius,
     )
 
-    fov_map = module.FovMap(settings.fov_radius, settings.qbits)
+    fov_map = module.FovMap(settings.max_radius, settings.qbits)
     total = bench_timer(module, fov_map, bs, settings, simple=True)
 
     return total
@@ -150,10 +150,10 @@ def bench_simple_2d_q64(bs: BenchSettings) -> float:
         Font(None, size=16),
         Color("snow"),
         qbits=QBits.Q64,
-        fov_radius=bs.radius,
+        max_radius=bs.radius,
     )
 
-    fov_map = module.FovMap(settings.fov_radius, settings.qbits)
+    fov_map = module.FovMap(settings.max_radius, settings.qbits)
     total = bench_timer(module, fov_map, bs, settings, simple=True)
 
     return total
@@ -170,10 +170,10 @@ def bench_simple_2d_q128(bs: BenchSettings) -> float:
         Font(None, size=16),
         Color("snow"),
         qbits=QBits.Q128,
-        fov_radius=bs.radius,
+        max_radius=bs.radius,
     )
 
-    fov_map = module.FovMap(settings.fov_radius, settings.qbits)
+    fov_map = module.FovMap(settings.max_radius, settings.qbits)
     total = bench_timer(module, fov_map, bs, settings, simple=True)
 
     return total
