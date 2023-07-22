@@ -189,10 +189,10 @@ def bench_subtile_2d(bs: BenchSettings) -> float:
         bs.dims,
         Font(None, size=16),
         Color("snow"),
-        fov_radius=bs.radius,
+        max_radius=bs.radius,
     )
 
-    fov_map = module.FovMap(settings.fov_radius, settings.subtiles_xy, settings.fov_line_type)
+    fov_map = module.FovMap(settings.max_radius, settings.subtiles_xy, settings.fov_line_type)
     total = bench_timer(module, fov_map, bs, settings, simple=False)
 
     return total

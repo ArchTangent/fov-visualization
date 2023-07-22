@@ -23,6 +23,14 @@ from helpers import (
     pri_sec_to_relative,
     to_tile_id,
 )
+from map_drawing_2d import (
+    draw_player,
+    draw_fov_line, 
+    draw_tile_at_cursor,
+    draw_line_to_cursor,
+    draw_floor,
+    draw_structure,
+)
 from typing import Dict, List, Tuple
 
 
@@ -54,6 +62,9 @@ class Settings:
         unseen_color="gray15",
         draw_tid: bool = False,
     ) -> None:
+        if map_dims.x < 1 or map_dims.y < 1:
+            raise ValueError("all map dimensions must be > 0!")
+
         self.width = width
         self.height = height
         self.map_dims = map_dims
@@ -285,6 +296,13 @@ class FovOctant:
         return FovOctant(tiles, max_fov_ix)
 
 
+def get_tile_at_cursor(mx: int, my: int, tile_size: int) -> Coords:
+    """Gets the coordinates of the Tile at the mouse cursor position."""
+    tx = math.floor(mx / tile_size)
+    ty = math.floor(my / tile_size)
+    return Coords(tx, ty)
+
+
 #   ########    ####    ##    ##
 #   ##        ##    ##  ##    ##
 #   ######    ##    ##  ##    ##
@@ -418,18 +436,6 @@ def quantized_slopes(slope_lo: float, slope_hi: float, qbits: QBits) -> int:
     return slopes
 
 
-def set_bits_from_range(lo_bit: int, hi_bit: int) -> int:
-    """Sets visible and blocking bits from a low-high range."""
-    if lo_bit > hi_bit:
-        raise ValueError("lo_bit must be <= hi_bit!")
-
-    bits = 0
-    for bit in range(lo_bit, hi_bit + 1):
-        bits |= 2**bit
-
-    return bits
-
-
 def slopes_by_relative_coords(dpri: int, dsec: int) -> Tuple[float, float]:
     """Returns low/high dsec/dpri slope for a 2D tile based on relative coords and Octant"""
     if dpri == dsec == 0:
@@ -452,30 +458,18 @@ def tile_is_visible(visible_bits: int, blocked_bits: int) -> bool:
 #   ##    ##  ##   ##   ########  ###  ###
 #   #######   ##    ##  ##    ##   ##  ##
 
-
-def draw_floor(
-    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
+def draw_map(
+    tilemap: TileMap,
+    visible_tiles: set,
+    screen: Surface,
+    settings: Settings,
 ):
-    """Draws a floor tile with reference point `pr` and tile size `ts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.lines(screen, color, True, [p1, p2, p3, p4], width=2)
-
-
-def draw_structure(
-    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
-):
-    """Draws a structure in a tile with reference point `pr` and tile size `ts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
+    """Renders the Tilemap, accounting for FOV."""
+    # Row is y; col is x
+    for ty, row_data in enumerate(tilemap.tiles):
+        for tx, tile in enumerate(row_data):
+            if (tx, ty) in visible_tiles:
+                draw_tile(screen, tile, settings)
 
 
 def draw_tile(screen: Surface, tile: Tile, settings: Settings):
@@ -509,25 +503,6 @@ def draw_tile(screen: Surface, tile: Tile, settings: Settings):
         draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
 
 
-def draw_map(
-    tilemap: TileMap,
-    visible_tiles: set,
-    screen: Surface,
-    settings: Settings,
-):
-    """Renders the Tilemap, accounting for FOV."""
-    # Row is y; col is x
-    for ty, row_data in enumerate(tilemap.tiles):
-        for tx, tile in enumerate(row_data):
-            if (tx, ty) in visible_tiles:
-                draw_tile(screen, tile, settings)
-
-
-def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_size: int):
-    """Renders the player (always visible) on the Tilemap."""
-    screen.blit(player_img, (px * tile_size, py * tile_size))
-
-
 #    ######      ##     ##    ##  ########
 #   ##         ##  ##   ###  ###  ##
 #   ##   ###  ##    ##  ## ## ##  ######
@@ -559,6 +534,10 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
     visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
 
     # --- HUD Setup --- #
+    show_player_line = False
+    show_fov_line = False
+    show_cursor = True
+
 
     # --- Initial Draw --- #
     draw_map(tilemap, visible_tiles, screen, settings)
@@ -588,6 +567,15 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
                 if event.dict["key"] == pygame.K_d and px < tilemap.xdims - 1:
                     redraw = True
                     px += 1
+                if event.dict["key"] == pygame.K_c:
+                    show_cursor = not show_cursor
+                    redraw = True
+                if event.dict["key"] == pygame.K_f:
+                    show_fov_line = not show_fov_line
+                    redraw = True
+                if event.dict["key"] == pygame.K_r:
+                    show_player_line = not show_player_line
+                    redraw = True
                 if event.dict["key"] == pygame.K_MINUS and radius > 0:
                     redraw = True
                     radius -= 1
@@ -599,9 +587,19 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
         if redraw:
             # fill the screen with a color to wipe away anything from last frame
             screen.fill("black")
+            mx, my = pygame.mouse.get_pos()
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
             draw_map(tilemap, visible_tiles, screen, settings)
             draw_player(screen, player_img, px, py, tile_size)
+
+            tx, ty = get_tile_at_cursor(mx, my, tile_size)
+
+            if show_fov_line:
+                draw_fov_line(screen, px, py, tx, ty, settings)
+            if show_cursor:
+                draw_tile_at_cursor(screen, tx, ty, settings, line=False)
+            if show_player_line:
+                draw_line_to_cursor(screen, px, py, mx, my, settings)
 
         pygame.display.flip()
 

@@ -23,7 +23,17 @@ from helpers import (
     boundary_radii,
     octant_transform,
     pri_sec_to_relative,
-    to_tile_id,
+    to_tile_id
+)
+from map_drawing_2d import (
+    draw_player,
+    draw_fov_line, 
+    draw_tile_at_cursor,
+    draw_line_to_cursor,
+    draw_floor,
+    draw_north_wall,
+    draw_west_wall,
+    draw_structure,
 )
 from lines import bresenham, bresenham_full
 from typing import List, Dict, Set, Tuple
@@ -39,7 +49,8 @@ class Settings:
         map_dims: Coords,
         font: Font,
         font_color: Color,
-        fov_radius: int = 63,
+        radius: int = 63,
+        max_radius: int = 63,
         tile_size: int = 64,
         subtiles_xy: int = 8,
         line_width: int = 1,
@@ -56,6 +67,9 @@ class Settings:
         unseen_color="gray15",
         draw_tid: bool = False,
     ) -> None:
+        if map_dims.x < 1 or map_dims.y < 1:
+            raise ValueError("all map dimensions must be > 0!")
+
         self.width = width
         self.height = height
         self.map_dims = map_dims
@@ -66,7 +80,8 @@ class Settings:
         self.qbits = qbits
         self.font = font
         self.font_color = font_color
-        self.fov_radius = fov_radius
+        self.radius = min(radius, max_radius)
+        self.max_radius = max_radius
         self.fov_line_type = fov_line_type
         self.floor_color = Color(floor_color)
         self.fov_line_color = fov_line_color
@@ -141,14 +156,6 @@ class Tile:
 
     def to_coords(self) -> Tuple[int, int]:
         return (self.x, self.y)
-
-
-def get_tile_at_cursor(mx: int, my: int, dims: Coords, tile_size: int) -> Coords:
-    """Gets the coordinates of the Tile at the mouse cursor position."""
-    xdims, ydims = dims
-    tx = math.floor(mx / tile_size)
-    ty = math.floor(my / tile_size)
-    return Coords(tx, ty)
 
 
 class FovMap:
@@ -372,12 +379,31 @@ class FovTile:
         return result
 
 
+def get_tile_at_cursor(mx: int, my: int, tile_size: int) -> Coords:
+    """Gets the coordinates of the Tile at the mouse cursor position."""
+    tx = math.floor(mx / tile_size)
+    ty = math.floor(my / tile_size)
+    return Coords(tx, ty)
+
 #   #######   #######      ##     ##    ##
 #   ##    ##  ##    ##   ##  ##   ##    ##
 #   ##    ##  #######   ##    ##  ## ## ##
 #   ##    ##  ##   ##   ########  ###  ###
 #   #######   ##    ##  ##    ##   ##  ##
 
+def draw_map(
+    screen: Surface,
+    tilemap: TileMap,
+    visible_tiles: Dict[Tuple[int, int], VisibleTile],
+    settings: Settings,
+):
+    """Renders the Tilemap, accounting for FOV."""
+    # Row is y; col is x
+    for ty, row_data in enumerate(tilemap.tiles):
+        for tx, tile in enumerate(row_data):
+            visible_tile = visible_tiles.get((tx, ty))
+            if visible_tile:
+                draw_tile(screen, tile, visible_tile, settings)
 
 def draw_tile(
     screen: Surface, tile: Tile, visible_tile: VisibleTile, settings: Settings
@@ -432,206 +458,6 @@ def draw_tile(
         # Draw W wall (if present)
         if wall_w_seen:
             draw_west_wall(screen, p1, ts, sts, w, s.wall_color, s.wall_trim_color)
-
-
-def draw_fov_line(screen: Surface, tx: int, ty: int, settings: Settings):
-    """Draws a 2D FOV line from (0,0) to tile at mouse cursor (tx, ty)."""
-    tiles = bresenham_full(0, 0, tx, ty)
-
-    ts = settings.tile_size
-    color = Color(settings.fov_line_color)
-    trim = Color(settings.fov_line_trim_color)
-    for fx, fy in tiles:
-        draw_fov_tile(screen, Vector2(fx * ts, fy * ts), ts, color, trim)
-
-
-def draw_fov_line_subpixel(screen: Surface, tx: int, ty: int, settings: Settings):
-    """Draws a subpixel 2D FOV line from (0,0) to tile at mouse cursor (tx, ty)."""
-    sp = settings.subtiles_xy
-    half_sp = sp // 2
-    sts = settings.subtile_size
-    # Origin / target pixels vary based on FOV height and octant
-    ox = half_sp
-    oy = half_sp
-    fx = tx * sp + half_sp
-    fy = ty * sp + half_sp
-
-    if settings.fov_line_type == FovLineType.NORMAL:
-        tiles = bresenham(ox, oy, fx, fy)
-    else:
-        tiles = bresenham_full(ox, oy, fx, fy)
-
-    color = Color(settings.fov_line_color)
-    trim = Color(settings.fov_line_trim_color)
-
-    for fx, fy in tiles:
-        draw_fov_tile(screen, Vector2(fx * sts, fy * sts), sts, color, trim)
-
-
-def draw_fov_tile(screen: Surface, pr: Vector2, ts: int, color: Color, trim: Color):
-    """Draws an FOV tile with reference point `pr` and tile size `ts`."""
-
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4])
-
-
-def draw_floor(
-    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
-):
-    """Draws a floor tile with reference point `pr` and tile size `ts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.lines(screen, color, True, [p1, p2, p3, p4], width=2)
-
-
-def draw_north_wall(
-    screen: Surface,
-    pr: Vector2,
-    ts: int,
-    sts: int,
-    width: int,
-    color: Color,
-    trim: Color,
-):
-    """Draws a north wall w/reference `pr`, tile size `ts`, and subtile size `sts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + sts)
-    p4 = Vector2(pr.x, pr.y + sts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
-
-
-def draw_west_wall(
-    screen: Surface,
-    pr: Vector2,
-    ts: int,
-    sts: int,
-    width: int,
-    color: Color,
-    trim: Color,
-):
-    """Draws a north wall w/reference `pr`, tile size `ts`, and subtile size `sts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + sts, pr.y)
-    p3 = Vector2(pr.x + sts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
-
-
-def draw_structure(
-    screen: Surface, pr: Vector2, ts: int, width: int, color: Color, trim: Color
-):
-    """Draws a structure in a tile with reference point `pr` and tile size `ts`."""
-    p1 = Vector2(pr.x, pr.y)
-    p2 = Vector2(pr.x + ts, pr.y)
-    p3 = Vector2(pr.x + ts, pr.y + ts)
-    p4 = Vector2(pr.x, pr.y + ts)
-
-    pygame.draw.polygon(screen, color, [p1, p2, p3, p4])
-    pygame.draw.lines(screen, trim, True, [p1, p2, p3, p4], width=width)
-
-
-def draw_subgrid(screen: Surface, settings: Settings):
-    """Draws subtiles on base of tilemap according to dimensions."""
-    color = settings.floor_trim_color
-    ts = settings.tile_size
-    sts = settings.tile_size / settings.subtiles_xy
-    xdims, ydims = settings.xdims, settings.ydims
-
-    for dx in range(1, xdims * settings.subtiles_xy):
-        x1 = dx * sts
-        y1 = 0
-        x2 = dx * sts
-        y2 = ydims * ts
-        pygame.draw.line(screen, color, (x1, y1), (x2, y2))
-
-    for dy in range(1, ydims * settings.subtiles_xy):
-        x1 = 0
-        y1 = dy * sts
-        x2 = xdims * ts
-        y2 = dy * sts
-        pygame.draw.line(screen, color, (x1, y1), (x2, y2))
-
-
-def draw_map(
-    screen: Surface,
-    tilemap: TileMap,
-    visible_tiles: Dict[Tuple[int, int], VisibleTile],
-    settings: Settings,
-):
-    """Renders the Tilemap, accounting for FOV."""
-    # Row is y; col is x
-    for ty, row_data in enumerate(tilemap.tiles):
-        for tx, tile in enumerate(row_data):
-            visible_tile = visible_tiles.get((tx, ty))
-            if visible_tile:
-                draw_tile(screen, tile, visible_tile, settings)
-
-
-def draw_line_to_cursor(
-    screen: Surface, px: int, py: int, mx: int, my: int, settings: Settings
-):
-    """Draws a line from player to mouse cursor.
-
-    `px, py`: int
-        player tile position.
-    `mx, my`: int
-        mouse cursor position.
-    """
-    ts = settings.tile_size
-    mid = settings.tile_size * 0.5
-    line_width = settings.line_width
-
-    pygame.draw.line(
-        screen,
-        Color("red"),
-        (px * ts + mid, py * ts + mid),
-        (mx, my),
-        line_width,
-    )
-
-
-def draw_tile_at_cursor(
-    screen: Surface, tx: int, ty: int, settings: Settings, line=True
-):
-    """Draws border around Tile at cursor.  Also draws line if `line=True`."""
-    ts = settings.tile_size
-    tile_mid = ts * 0.5
-    w = settings.line_width
-    rx, ry = tx * ts, ty * ts
-
-    if line:
-        pygame.draw.line(
-            screen,
-            Color("red"),
-            (tile_mid, tile_mid),
-            (rx + tile_mid, ry + tile_mid),
-            w,
-        )
-
-    pygame.draw.lines(
-        screen,
-        Color("yellow"),
-        True,
-        [(rx, ry), (rx + ts, ry), (rx + ts, ry + ts), (rx, ry + ts)],
-    )
-
-
-def draw_player(screen: Surface, player_img: Surface, px: int, py: int, tile_size: int):
-    """Renders the player (always visible) on the Tilemap."""
-    screen.blit(player_img, (px * tile_size, py * tile_size))
 
 
 #   ########    ####    ##    ##
@@ -1286,7 +1112,7 @@ def run_game(tilemap: TileMap, settings: Settings):
     player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
 
     # --- Map Setup --- #
-    radius = settings.fov_radius
+    radius = settings.max_radius
     tile_size = settings.tile_size
     fov_map = FovMap(radius, settings.subtiles_xy, settings.fov_line_type)
     visible_tiles = fov_calc(0, 0, tilemap, fov_map, radius)
@@ -1348,10 +1174,10 @@ def run_game(tilemap: TileMap, settings: Settings):
             draw_map(screen, tilemap, visible_tiles, settings)
             draw_player(screen, player_img, px, py, tile_size)
 
-            tx, ty = get_tile_at_cursor(mx, my, settings.map_dims, tile_size)
+            tx, ty = get_tile_at_cursor(mx, my, tile_size)
 
             if show_fov_line:
-                draw_fov_line(screen, tx, ty, settings)
+                draw_fov_line(screen, px, py, tx, ty, settings)
             if show_cursor:
                 draw_tile_at_cursor(screen, tx, ty, settings, line=False)
             if show_player_line:
@@ -1391,8 +1217,7 @@ if __name__ == "__main__":
         Coords(16, 9),
         Font(None, size=16),
         Color("snow"),
-        subtiles_xy=8,
-        fov_line_type=FovLineType.NORMAL,
+        radius=5
     )
     tilemap = TileMap(blocked, settings)
     run_game(tilemap, settings)
