@@ -23,11 +23,11 @@ from helpers import (
     boundary_radii,
     octant_transform,
     pri_sec_to_relative,
-    to_tile_id
+    to_tile_id,
 )
 from map_drawing_2d import (
     draw_player,
-    draw_fov_line, 
+    draw_fov_line,
     draw_tile_at_cursor,
     draw_line_to_cursor,
     draw_floor,
@@ -385,11 +385,13 @@ def get_tile_at_cursor(mx: int, my: int, tile_size: int) -> Coords:
     ty = math.floor(my / tile_size)
     return Coords(tx, ty)
 
+
 #   #######   #######      ##     ##    ##
 #   ##    ##  ##    ##   ##  ##   ##    ##
 #   ##    ##  #######   ##    ##  ## ## ##
 #   ##    ##  ##   ##   ########  ###  ###
 #   #######   ##    ##  ##    ##   ##  ##
+
 
 def draw_map(
     screen: Surface,
@@ -404,6 +406,7 @@ def draw_map(
             visible_tile = visible_tiles.get((tx, ty))
             if visible_tile:
                 draw_tile(screen, tile, visible_tile, settings)
+
 
 def draw_tile(
     screen: Surface, tile: Tile, visible_tile: VisibleTile, settings: Settings
@@ -1199,7 +1202,7 @@ def run_game(tilemap: TileMap, settings: Settings):
 if __name__ == "__main__":
     print("\n=====  2D Subtile FOV Testing  =====\n")
     pygame.freetype.init()
-    # FOV Blockers: (structure: int, north_wall: int, west_wall: int)
+
     blocked: Dict[Tuple[int, int], Blockers] = {
         (4, 4): Blockers(wall_n=2),
         (5, 4): Blockers(wall_w=2),
@@ -1212,12 +1215,7 @@ if __name__ == "__main__":
         (15, 1): Blockers(wall_n=2),
     }
     settings = Settings(
-        1280,
-        720,
-        Coords(16, 9),
-        Font(None, size=16),
-        Color("snow"),
-        radius=5
+        1280, 720, Coords(16, 9), Font(None, size=16), Color("snow"), radius=5
     )
     tilemap = TileMap(blocked, settings)
     run_game(tilemap, settings)

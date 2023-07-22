@@ -25,7 +25,7 @@ from helpers import (
 )
 from map_drawing_2d import (
     draw_player,
-    draw_fov_line, 
+    draw_fov_line,
     draw_tile_at_cursor,
     draw_line_to_cursor,
     draw_floor,
@@ -150,10 +150,9 @@ class Tile:
 
 class FovMaps:
     """Holds `FovMap` instances for each value of FOV radius."""
+
     def __init__(self, qbits: QBits) -> None:
-        self.by_radius = [
-            FovMap(r, qbits) for r in range(qbits.value)
-        ]
+        self.by_radius = [FovMap(r, qbits) for r in range(qbits.value)]
 
 
 class FovMap:
@@ -200,7 +199,18 @@ class FovTile:
         bits required to be set in previous column for this tile to be unseen.
     """
 
-    __slots__ = "tix", "rx", "ry", "dpri", "dsec", "abs_radius", "blocking_bits", "visible_bits", "buffer_ix", "buffer_bits",
+    __slots__ = (
+        "tix",
+        "rx",
+        "ry",
+        "dpri",
+        "dsec",
+        "abs_radius",
+        "blocking_bits",
+        "visible_bits",
+        "buffer_ix",
+        "buffer_bits",
+    )
 
     def __init__(self, tix: int, dpri: int, dsec: int, octant: Octant, qbits: QBits):
         # Blocking and visible bit ranges are all based on Octant 1
@@ -277,7 +287,7 @@ class FovOctant:
         tix = 1
         limit = radius * radius
         m = 0.5
-       
+
         for dpri in range(1, radius + 1):
             for dsec in range(dpri + 1):
                 if dpri == 0:
@@ -335,26 +345,42 @@ def fov_calc(
     # --- Octants 1-2 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O1, radius)
 
-    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_1))
-    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_2))
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_1)
+    )
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_2)
+    )
 
     # --- Octants 3-4 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O4, radius)
 
-    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_3))
-    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_4))
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_3)
+    )
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_4)
+    )
 
     # --- Octants 5-6 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O5, radius)
 
-    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_5))
-    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_6))
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_5)
+    )
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_6)
+    )
 
     # --- Octants 7-8 --- #
     max_x, max_y = boundary_radii(ox, oy, xdims, ydims, Octant.O8, radius)
 
-    visible_tiles.update(get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_7))
-    visible_tiles.update(get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_8))
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_y, max_x, abs_radius, tm, fov_map.octant_7)
+    )
+    visible_tiles.update(
+        get_visible_tiles(ox, oy, max_x, max_y, abs_radius, tm, fov_map.octant_8)
+    )
 
     return visible_tiles
 
@@ -458,6 +484,7 @@ def tile_is_visible(visible_bits: int, blocked_bits: int) -> bool:
 #   ##    ##  ##   ##   ########  ###  ###
 #   #######   ##    ##  ##    ##   ##  ##
 
+
 def draw_map(
     tilemap: TileMap,
     visible_tiles: set,
@@ -537,7 +564,6 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
     show_player_line = False
     show_fov_line = False
     show_cursor = True
-
 
     # --- Initial Draw --- #
     draw_map(tilemap, visible_tiles, screen, settings)
