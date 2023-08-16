@@ -25,7 +25,7 @@ from helpers import (
     pri_sec_to_relative,
     to_tile_id,
 )
-from map_drawing_2d import (
+from map_drawing import (
     draw_player,
     draw_fov_line,
     draw_tile_at_cursor,
@@ -58,8 +58,7 @@ class Settings:
         fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
-        fov_line_color="slateblue1",
-        fov_line_trim_color="slateblue3",
+        fov_line_color="deepskyblue1",
         wall_color="seagreen3",
         wall_trim_color="seagreen4",
         structure_color="seagreen3",
@@ -85,7 +84,6 @@ class Settings:
         self.fov_line_type = fov_line_type
         self.floor_color = Color(floor_color)
         self.fov_line_color = fov_line_color
-        self.fov_line_trim_color = fov_line_trim_color
         self.floor_trim_color = Color(floor_trim_color)
         self.wall_color = Color(wall_color)
         self.wall_trim_color = Color(wall_trim_color)
@@ -442,7 +440,7 @@ def draw_tile(
             y2 = p1y + dy * sts
             pygame.draw.line(screen, trim_color, (x1, y1), (x2, y2))
 
-        draw_floor(screen, p1, ts, w, s.floor_color, s.floor_trim_color)
+        draw_floor(screen, p1, ts, s.floor_color)
 
         if structure_seen:
             draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
@@ -1112,7 +1110,6 @@ def run_game(tilemap: TileMap, settings: Settings):
 
     # --- Player Setup --- #
     px, py = 0, 0
-    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
 
     # --- Map Setup --- #
     radius = settings.max_radius
@@ -1127,7 +1124,7 @@ def run_game(tilemap: TileMap, settings: Settings):
 
     # --- Initial Draw --- #
     draw_map(screen, tilemap, visible_tiles, settings)
-    draw_player(screen, player_img, px, py, tile_size)
+    draw_player(screen, px, py, tile_size)
 
     # --- Game Loop --- #
     while running:
@@ -1175,7 +1172,7 @@ def run_game(tilemap: TileMap, settings: Settings):
             mx, my = pygame.mouse.get_pos()
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
             draw_map(screen, tilemap, visible_tiles, settings)
-            draw_player(screen, player_img, px, py, tile_size)
+            draw_player(screen, px, py, tile_size)
 
             tx, ty = get_tile_at_cursor(mx, my, tile_size)
 
@@ -1219,3 +1216,4 @@ if __name__ == "__main__":
     )
     tilemap = TileMap(blocked, settings)
     run_game(tilemap, settings)
+

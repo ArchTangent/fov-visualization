@@ -1,4 +1,5 @@
 """Line Drawing Algorithms (2D)"""
+import math
 from typing import List, Tuple
 
 
@@ -23,7 +24,7 @@ def bresenham(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
             y += y_inc
             if tx >= 0:
                 x += x_inc
-                tx -= 2 * dy            
+                tx -= 2 * dy
             tx += 2 * dx
 
             result.append((x, y))
@@ -36,7 +37,7 @@ def bresenham(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
             x += x_inc
             if ty >= 0:
                 y += y_inc
-                ty -= 2 * dx            
+                ty -= 2 * dx
             ty += 2 * dy
 
             result.append((x, y))
@@ -46,12 +47,12 @@ def bresenham(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
 
 def bresenham_full(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
     """Breshenham's line algorithm - 2D version that gets all tiles touched.
-    
+
     `tx`, `ty` indicate full tile distance; `hx`, `hy` indicate half tile distance.
     """
     result = [(x1, y1)]
 
-    dx, dy = abs(x2 - x1), abs(y2 - y1)       
+    dx, dy = abs(x2 - x1), abs(y2 - y1)
     x_inc, y_inc = 1, 1
     x, y = x1, y1
 
@@ -71,7 +72,7 @@ def bresenham_full(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
             if hx >= 0:
                 result.append((x + x_inc, y - y_inc))
             if hx <= 0:
-                result.append((x, y))            
+                result.append((x, y))
             if tx > 0:
                 x += x_inc
                 tx -= 2 * dy
@@ -89,9 +90,9 @@ def bresenham_full(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
             if hy >= 0:
                 result.append((x - x_inc, y + y_inc))
             if hy <= 0:
-                result.append((x, y)) 
+                result.append((x, y))
             if ty > 0:
-                y += y_inc        
+                y += y_inc
                 ty -= 2 * dx
                 result.append((x, y))
             ty += 2 * dy
@@ -99,134 +100,90 @@ def bresenham_full(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
     return result
 
 
-def fire_line(x1: int, y1: int, x2: int, y2: int) -> List[Tuple[int, int]]:
-    """Fire line - 2D version. Differs slightly from Breshenham.
+def fire_line(xi: float, yi: float, x2: int, y2: int) -> List[Tuple[int, int]]:
+    """Returns all tiles touched from source tile to slope range of target tile.
 
-    All lines should be reciprocal. Uses 1000 for granularity `g`."""
-    # Deltas
-    dx, dy = x2 - x1, y2 - y1
-    abs_dx, abs_dy = abs(dx), abs(dy)
+    - `x1`, `y1` represent the source tile.
+    - `x2`, `y2` represent the target tile.
+    - `xi`, `yi` are starting floating point values.
+    - `xf`, `yf` are ending floating point values.
+    - `xs`, `ys` are x/y floating point shifts within source cell, normally `0.5`.
+      If `xs = 0.5` and `ys = 0.5`, the fire line starts from XY center of cell.
+      These can represent weapon/tool projections from the body (e.g. a gun barrel).
+    - `d(x,y)_start`, `d(x,y)_end` are starting / ending range indexes.
 
-    if abs_dx == 0 and abs_dy == 0:
-        return [(x1, y1)]
+    Fire line spans angle range beween lines `AB` and `AC`:
+    ```none
+            xi                          xf
+    +----+----+                     B----+----+
+    |       A |yi                   |         |
+    |         |                     |    +    | yf
+    |         |                     |         |
+    +----+----+                     +----+----C
+        src                             tgt
+    (x1, y1)                    (x2, y2)
+    ```
 
-    # Sign, increment, and tile distance
-    x_inc, y_inc = 1, 1
-    if dx < 0:
-        x_inc = -1
-    if dy < 0:
-        y_inc = -1
-    dist = 500
+    Example fire lines:
+    ```none
 
-    # Choose primary axis (Y or X)
-    if abs_dy > abs_dx:
-        dsdp = int(abs_dx / abs_dy * 1000) * x_inc
-        pri, sec = y1, x1
-        result = [(sec, pri)]
+              ++T
+             ++++                  S++++T
+            S++
 
-        for _ in range(abs_dy):
-            pri += y_inc
-            dist += dsdp
+    (0.5, 0.5) to (4, 2)    (0.5, 0.5) to (5, 0)
+    ```
 
-            if dist >= 1000:
-                dist -= 1000
-                sec += 1
-            elif dist < 0:
-                dist += 1000
-                sec -= 1
+    Y, X order of calculation is for optimum locality when selecting cells
+    from the map, which are arranged in YX order.
 
-            result.append((sec, pri))
-    else:
-        dsdp = int(abs_dy / abs_dx * 1000) * y_inc
-        pri_inc = x_inc
-        pri, sec = x1, y1
-        result = [(pri, sec)]
-
-        for _ in range(abs_dx):
-            pri += pri_inc
-            dist += dsdp
-
-            if dist >= 1000:
-                dist -= 1000
-                sec += 1
-            elif dist < 0:
-                dist += 1000
-                sec -= 1
-
-            result.append((pri, sec))
-
-    return result
-
-
-def fire_line_full(
-    x1: int, y1: int, x2: int, y2: int, g: int = 1000
-) -> List[Tuple[int, int]]:
-    """Fire line full - 2D version that gets all tiles touched.
-
-    Secondary distance is th secondary axis distance from the next tile edge.
-    Indicates a crossing of a tile boundary.
-
-    `g` is the granularity of cell distance. A higher value detects corners better.
+    NOTE: assumes all values are positive and in-bounds.
+    NOTE: to avoid dividing by zero, xs or ys should never be 0.0 or 1.0.
     """
-    # Deltas
-    dx, dy = (x2 - x1, y2 - y1)
-    abs_dx, abs_dy = abs(dx), abs(dy)
-    abs_dist = max(abs_dx, abs_dy)
+    x1, y1 = int(xi), int(yi)
+    xs, ys = xi - x1, yi - y1
+    xf, yf = x2 + 0.5, y2 + 0.5
+    cx, cy = abs(x2 - x1), abs(y2 - y1)
+    dx, dy = abs(xf - xi), abs(yf - yi)
+    dx_max, dy_max = cx + 1, cy + 1
+    x_inc = 1 if x2 > x1 else -1
+    y_inc = 1 if y2 > y1 else -1
+    m = 0.000001
 
-    if abs_dist == 0:
-        return [(x1, y1)]
-
-    # Sign and increment
-    x_inc, y_inc = 1, 1
-    if dx < 0:
+    if xf < xi:
         x_inc = -1
-    if dy < 0:
+        xs = math.ceil(xi) - xi
+    if yf < yi:
         y_inc = -1
+        ys = math.ceil(yi) - yi
 
-    result = [(x1, y1)]
-    x, y = x1, y1
+    result = []
 
-    # Choose primary axis
-    if abs_dy > abs_dx:
-        dxdy = int(abs_dx / abs_dy * g)        
-        dxdy_edge = dxdy // 2
-        dist = g // 2
+    if cx == 0:
+        return [(x1, y1 + y_inc * i) for i in range(dy_max)]
+    if cy == 0:
+        return [(x1 + x_inc * i, y1) for i in range(dx_max)]
 
-        for _ in range(abs_dist):
-            y += y_inc
-            dist += dxdy
-            dist_edge = dist - dxdy_edge
+    dxdy_lo = (dx - 0.5) / (dy + 0.5)
+    dxdy_hi = (dx + 0.5) / (dy - 0.5)
+    dx_lo_ref = xs - (dxdy_lo * ys)
+    dx_hi_ref = xs + (dxdy_hi * (1.0 - ys))
+    y = y1
 
-            if dist_edge >= g:
-                result.append((x + x_inc, y - y_inc))
+    for y_ix in range(dy_max):
+        dx_lo = dx_lo_ref + dxdy_lo * y_ix
+        dx_hi = dx_hi_ref + dxdy_hi * y_ix
+        dx_start = max(math.floor(dx_lo - m), 0)
+        dx_end = min(math.ceil(dx_hi + m), dx_max)
+        x = x1 + x_inc * dx_start
 
-            if dist_edge <= g:
-                result.append((x, y))
-
-            if dist > g:
-                dist -= g
-                x += x_inc
-                result.append((x, y))        
-    else:
-        dydx = int(abs_dy / abs_dx * g)
-        dydx_edge = dydx // 2
-        dist = g // 2
-
-        for _ in range(abs_dist):
+        for _ in range(dx_start, dx_end):
+            result.append((x, y))
             x += x_inc
-            dist += dydx
-            dist_edge = dist - dydx_edge
 
-            if dist_edge >= g:
-                result.append((x - x_inc, y + y_inc))
-
-            if dist_edge <= g:
-                result.append((x, y))
-
-            if dist > g:
-                dist -= g
-                y += y_inc
-                result.append((x, y))
+        dx_lo += dxdy_lo
+        dx_hi += dxdy_hi
+        y += y_inc
 
     return result
 
@@ -236,6 +193,18 @@ def fire_line_full(
 #      ##     ######     ######      ##
 #      ##     ##              ##     ##
 #      ##     ########  #######      ##
+
+
+def test_bresenham_2D_reciprocal():
+    """Checks if 2D bresenham lines are reciprocal."""
+    suite = [(int(0), int(0), x, y) for x in range(0, 5) for y in range(-5, 5)]
+    suite.extend([(x, y, 0, 0) for x in range(0, 5) for y in range(-5, 5)])
+
+    for x1, y1, x2, y2 in suite:
+        fwd = bresenham(x1, y1, x2, y2)
+        rev = bresenham(x2, y2, x1, y1)
+        assert sorted(fwd) == sorted(rev)
+
 
 def test_bresenham_2D_full():
     """Check expected values for the `bresenham_full()` 2D function."""
@@ -268,51 +237,5 @@ def test_bresenham_2D_full():
         [(4, 2), (3, 2), (3, 1), (2, 1), (1, 1), (1, 0), (0, 0)],
     ]
     actual = [bresenham_full(*coords) for coords in suite]
-    for i, e in enumerate(expected):
-        assert actual[i] == e
-
-
-def test_fire_line_2D_reciprocal():
-    """Checks if 2D fire lines are reciprocal."""
-    suite = [(int(0), int(0), x, y) for x in range(0, 5) for y in range(-5, 5)]
-    suite.extend([(x, y, 0, 0) for x in range(0, 5) for y in range(-5, 5)])
-
-    for x1, y1, x2, y2 in suite:
-        fwd = fire_line(x1, y1, x2, y2)
-        rev = fire_line(x2, y2, x1, y1)
-        assert sorted(fwd) == sorted(rev)
-
-
-def test_fire_line_2D_full():
-    """Check expected values for the `fire_line_full()` 2D function."""
-    suite = [
-        (0, 0, 5, 0),
-        (0, 0, -5, 0),
-        (0, 0, 0, 5),
-        (0, 0, 0, -5),
-        (5, 0, 0, 0),
-        (-5, 0, 0, 0),
-        (0, 5, 0, 0),
-        (0, -5, 0, 0),
-        (0, 0, 2, 2),
-        (2, 2, 0, 0),
-        (0, 0, 4, 2),
-        (4, 2, 0, 0),
-    ]
-    expected = [
-        [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0)],
-        [(0, 0), (-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0)],
-        [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5)],
-        [(0, 0), (0, -1), (0, -2), (0, -3), (0, -4), (0, -5)],
-        [(5, 0), (4, 0), (3, 0), (2, 0), (1, 0), (0, 0)],
-        [(-5, 0), (-4, 0), (-3, 0), (-2, 0), (-1, 0), (0, 0)],
-        [(0, 5), (0, 4), (0, 3), (0, 2), (0, 1), (0, 0)],
-        [(0, -5), (0, -4), (0, -3), (0, -2), (0, -1), (0, 0)],
-        [(0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 1), (2, 2)],
-        [(2, 2), (2, 1), (1, 2), (1, 1), (1, 0), (0, 1), (0, 0)],
-        [(0, 0), (1, 0), (1, 1), (2, 1), (3, 1), (3, 2), (4, 2)],
-        [(4, 2), (3, 2), (3, 1), (2, 1), (1, 1), (1, 0), (0, 0)],
-    ]
-    actual = [fire_line_full(*coords) for coords in suite]
     for i, e in enumerate(expected):
         assert actual[i] == e

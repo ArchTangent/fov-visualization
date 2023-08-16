@@ -23,7 +23,7 @@ from helpers import (
     pri_sec_to_relative,
     to_tile_id,
 )
-from map_drawing_2d import (
+from map_drawing import (
     draw_player,
     draw_fov_line,
     draw_tile_at_cursor,
@@ -53,8 +53,7 @@ class Settings:
         fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
-        fov_line_color="slateblue1",
-        fov_line_trim_color="slateblue3",
+        fov_line_color="deepskyblue1",
         wall_color="seagreen3",
         wall_trim_color="seagreen4",
         structure_color="seagreen3",
@@ -78,7 +77,6 @@ class Settings:
         self.fov_line_type = fov_line_type
         self.floor_color = Color(floor_color)
         self.fov_line_color = fov_line_color
-        self.fov_line_trim_color = fov_line_trim_color
         self.floor_trim_color = Color(floor_trim_color)
         self.structure_color = Color(structure_color)
         self.structure_trim_color = Color(structure_trim_color)
@@ -500,7 +498,7 @@ def draw_map(
 
 
 def draw_tile(screen: Surface, tile: Tile, settings: Settings):
-    """Renders a visible 3D Tile on the map."""
+    """Renders a visible Tile on the map."""
     p1 = tile.p1
     p1x, p1y = tile.p1
     s = settings
@@ -525,7 +523,7 @@ def draw_tile(screen: Surface, tile: Tile, settings: Settings):
             y2 = p1y + dy * sts
             pygame.draw.line(screen, trim_color, (x1, y1), (x2, y2))
 
-        draw_floor(screen, p1, ts, w, s.floor_color, s.floor_trim_color)
+        draw_floor(screen, p1, ts, s.floor_color)
     else:
         draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
 
@@ -567,7 +565,7 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
 
     # --- Initial Draw --- #
     draw_map(tilemap, visible_tiles, screen, settings)
-    draw_player(screen, player_img, px, py, tile_size)
+    draw_player(screen, px, py, tile_size)
 
     # --- Game Loop --- #
     while running:
@@ -616,7 +614,7 @@ def run_game(blocked: Dict[Tuple[int, int], Blockers], settings: Settings):
             mx, my = pygame.mouse.get_pos()
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
             draw_map(tilemap, visible_tiles, screen, settings)
-            draw_player(screen, player_img, px, py, tile_size)
+            draw_player(screen, px, py, tile_size)
 
             tx, ty = get_tile_at_cursor(mx, my, tile_size)
 
@@ -669,3 +667,4 @@ if __name__ == "__main__":
     fovmaps = FovMaps(settings.qbits)
 
     run_game(blocked, settings)
+    

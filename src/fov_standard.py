@@ -10,13 +10,13 @@ Key Ideas:
 7.) Tilemap stores tiles in a single array
 8.) Circular shape for more realistic FOV is baked into each FovMap
 
-Saving to / loading from JSON:
+Saving to / loading from gzipped JSON:
 - FovMaps is cached: loading from file is faster than generating new instances.
-- file path: "fovmaps/fovmaps2d_standard_{max_radius}.json"
-- Save: fov_maps.to_json_file(filepath)
-- Load: fov_maps = FovMaps.from_json_file(filepath)
+- file path: "fovmaps/fovmaps2d_standard_{max_radius}.fov"
 - Field names are truncated to save space on file (~30% lower file size)
+- JSON files are zipped to save even more space (~80% lower file size)
 """
+import gzip
 import json
 import math
 import pygame, pygame.freetype
@@ -33,9 +33,9 @@ from helpers import (
     QBits,
     boundary_radii,
     pri_sec_to_relative,
-    to_tile_id,
+    to_tile_id
 )
-from map_drawing_2d import (
+from map_drawing import (
     draw_player,
     draw_fov_line,
     draw_tile_at_cursor,
@@ -43,7 +43,7 @@ from map_drawing_2d import (
     draw_floor,
     draw_north_wall,
     draw_west_wall,
-    draw_structure,
+    draw_structure
 )
 from typing import Dict, List, Tuple
 
@@ -67,8 +67,7 @@ class Settings:
         fov_line_type: FovLineType = FovLineType.NORMAL,
         floor_color="steelblue2",
         floor_trim_color="steelblue4",
-        fov_line_color="slateblue1",
-        fov_line_trim_color="slateblue3",
+        fov_line_color="deepskyblue1",
         wall_color="seagreen3",
         wall_trim_color="seagreen4",
         structure_color="seagreen3",
@@ -88,13 +87,12 @@ class Settings:
         self.subtile_size = tile_size // subtiles_xy
         self.font = font
         self.font_color = font_color
-        self.radius = min(radius, max_radius)
-        self.max_radius = 127
+        self.max_radius = min(max_radius, 127)
+        self.radius = min(radius, self.max_radius)
         self.qbits = qbits
         self.fov_line_type = fov_line_type
         self.floor_color = Color(floor_color)
         self.fov_line_color = fov_line_color
-        self.fov_line_trim_color = fov_line_trim_color
         self.floor_trim_color = Color(floor_trim_color)
         self.wall_color = Color(wall_color)
         self.wall_trim_color = Color(wall_trim_color)
@@ -197,6 +195,19 @@ class FovMaps:
 
         return FovMaps(maps)
 
+    @staticmethod
+    def from_json_file_compressed(fp):
+        """Derializes FovMaps from gzip-compressed JSON file at path `fp`.
+        
+        Data is a list of dicts, each dict representing an `FovMap`.
+        """
+        
+        with gzip.open(fp, 'rt', encoding='utf-8') as f:
+            jlist = json.load(f)
+            maps = [FovMap.from_dict(d) for d in jlist]
+
+        return FovMaps(maps)
+
     def to_json(self) -> str:
         """Serializes `FovMap` to JSON string."""
         return json.dumps(self.to_list())
@@ -205,6 +216,12 @@ class FovMaps:
         """Serializes `FovMap` to JSON file with filepath `fp`."""
         with open(fp, "w", encoding="utf-8") as f:
             json.dump(self.to_list(), f)
+
+    def to_json_file_compressed(self, fp):
+        """Serializes FovMaps to gzip-compressed JSON file with filepath `fp`."""
+        
+        with gzip.open(fp, 'wt', encoding='utf-8') as f:
+            json.dump(self.to_list(), f)  # type: ignore
 
     def to_list(self) -> List:
         """Converts `FovMaps` to list form for serialization.
@@ -279,8 +296,6 @@ class FovTile:
 
     ### Fields
 
-    `tix`: int
-        Tile index within the Octant and list of FOV tiles.
     `dpri, dsec`: int
         Relative (pri,sec) coordinates of the FOV tile compared to FOV origin.
     `tile_bits_1`, `tile_bits_2`: int
@@ -296,7 +311,6 @@ class FovTile:
     """
 
     __slots__ = (
-        "tix",
         "rx",
         "ry",
         "dpri",
@@ -313,7 +327,6 @@ class FovTile:
 
     def __init__(
         self,
-        tix,
         rx,
         ry,
         dpri,
@@ -329,7 +342,6 @@ class FovTile:
     ):
         self.rx = rx
         self.ry = ry
-        self.tix = tix
         self.dpri = dpri
         self.dsec = dsec
         self.north_wall_bits_1 = north_wall_bits_1
@@ -342,10 +354,10 @@ class FovTile:
         self.buffer_bits = buffer_bits
 
     def __repr__(self) -> str:
-        return f"FovTile {self.tix} rel: ({self.rx},{self.ry})"
+        return f"FovTile rel: ({self.rx},{self.ry})"
 
     @staticmethod
-    def new(tix: int, dpri: int, dsec: int, octant: Octant):
+    def new(dpri: int, dsec: int, octant: Octant):
         # Octant-adjusted relative x/y
         rx, ry = pri_sec_to_relative(dpri, dsec, octant)
 
@@ -399,7 +411,6 @@ class FovTile:
             buffer_bits = buffer_ix | buffer_ix >> 1
 
         return FovTile(
-            tix,
             int(rx),
             int(ry),
             dpri,
@@ -418,7 +429,6 @@ class FovTile:
     def from_dict(d: Dict):
         """Creates `FovTile` from dictionary."""
         return FovTile(
-            d["tix"],
             d["rx"],
             d["ry"],
             d["dp"],
@@ -436,7 +446,6 @@ class FovTile:
     def to_dict(self) -> Dict:
         """Returns `FovTile` in dictionary form for serialization."""
         return {
-            "tix": self.tix,
             "rx": self.rx,
             "ry": self.ry,
             "dp": self.dpri,
@@ -472,7 +481,6 @@ class FovOctant:
         tiles: List[FovTile] = []
         max_fov_ix: List[int] = [0]
         fov_ix = 0
-        tix = 1
         limit = radius * radius
         m = 0.5
 
@@ -484,10 +492,9 @@ class FovOctant:
                     r = (dpri - m) * (dpri - m) + (dsec - m) * (dsec - m)
 
                 if r < limit:
-                    tile = FovTile.new(tix, dpri, dsec, octant)
+                    tile = FovTile.new(dpri, dsec, octant)
                     tiles.append(tile)
                     fov_ix += 1
-                    tix += 1
 
             max_fov_ix.append(fov_ix)
 
@@ -1412,7 +1419,7 @@ def draw_tile(screen: Surface, tile: Tile, visible_parts: int, settings: Setting
             y2 = p1y + dy * sts
             pygame.draw.line(screen, trim_color, (x1, y1), (x2, y2))
 
-        draw_floor(screen, p1, ts, w, s.floor_color, s.floor_trim_color)
+        draw_floor(screen, p1, ts, s.floor_color)
 
         if tile.structure:
             draw_structure(screen, p1, ts, w, s.structure_color, s.structure_trim_color)
@@ -1437,7 +1444,7 @@ def draw_tile(screen: Surface, tile: Tile, visible_parts: int, settings: Setting
 #    ######   ##    ##  ##    ##  ########
 
 
-def run_game(tilemap: TileMap, settings: Settings, from_file: bool = True):
+def run_game(tilemap: TileMap, settings: Settings):
     """Renders the FOV display using Pygame."""
     # --- Pygame setup --- #
     pygame.init()
@@ -1449,17 +1456,21 @@ def run_game(tilemap: TileMap, settings: Settings, from_file: bool = True):
 
     # --- Player Setup --- #
     px, py = settings.xdims // 2, settings.ydims // 2
-    player_img = pygame.image.load("assets/paperdoll.png").convert_alpha()
 
     # --- Map Setup --- #
-    if from_file:
-        fov_maps = FovMaps.from_json_file("fovmaps/fovmaps2d_standard.json")
+    fov_maps_path = f"fovmaps/fovmaps2d_standard_{settings.max_radius}.fov"
+        
+    if Path(fov_maps_path).exists():
+        print(f"'{fov_maps_path}' exists! Loading FovMaps from file...")
+        fov_maps = FovMaps.from_json_file_compressed(fov_maps_path)
         max_radius = len(fov_maps.maps)
         radius = min(settings.radius, max_radius)
     else:
+        print(f"Generating FovMaps and caching to '{fov_maps_path}'...")
         max_radius = settings.max_radius
         radius = settings.radius
         fov_maps = FovMaps.new(max_radius)
+        fov_maps.to_json_file_compressed(fov_maps_path)
 
     fov_map = fov_maps.maps[settings.radius]
     tile_size = settings.tile_size
@@ -1472,7 +1483,7 @@ def run_game(tilemap: TileMap, settings: Settings, from_file: bool = True):
 
     # --- Initial Draw --- #
     draw_map(screen, tilemap, visible_tiles, settings)
-    draw_player(screen, player_img, px, py, tile_size)
+    draw_player(screen, px, py, tile_size)
 
     # --- Game Loop --- #
     while running:
@@ -1528,7 +1539,7 @@ def run_game(tilemap: TileMap, settings: Settings, from_file: bool = True):
             mx, my = pygame.mouse.get_pos()
             visible_tiles = fov_calc(px, py, tilemap, fov_map, radius)
             draw_map(screen, tilemap, visible_tiles, settings)
-            draw_player(screen, player_img, px, py, tile_size)
+            draw_player(screen, px, py, tile_size)
 
             tx, ty = get_tile_at_cursor(mx, my, tile_size)
 
@@ -1579,8 +1590,7 @@ if __name__ == "__main__":
         Font(None, size=16),
         Color("snow"),
         radius=5,
-        max_radius=64,
     )
 
     tilemap = TileMap(blocked, settings)
-    run_game(tilemap, settings, from_file=False)
+    run_game(tilemap, settings)

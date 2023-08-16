@@ -1,5 +1,8 @@
-# My List
+# Project-specific
 NOTES.txt
+todo.txt
+fovmaps/*.fov
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
