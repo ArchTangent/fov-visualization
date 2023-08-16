@@ -1497,7 +1497,7 @@ def run_game(tilemap: TileMap, settings: Settings):
 if __name__ == "__main__":
     print("\n=====  2D Advanced FOV Testing  =====\n")
     pygame.freetype.init()
-    # FOV Blockers: (structure: int, north_wall: int, west_wall: int)
+    
     blocked: Dict[Tuple[int, int], Blockers] = {
         (4, 4): Blockers(wall_n=2),
         (5, 4): Blockers(wall_w=2),

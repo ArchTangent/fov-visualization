@@ -1,7 +1,7 @@
 """Standardized FOV calc (double buffer filter with circular shape)
 
 Key Ideas:
-1.) Max FOV range of 127 with 256 FOV bits (standardized)
+1.) Max FOV range of up to 127 with 256 FOV bits (standardized)
 2.) Faster building of FovMap using slope ranges
 3.) Simpler FOV calculation with less branching
 4.) Use bitflags instead of classes to store visible tiles
@@ -11,14 +11,16 @@ Key Ideas:
 8.) Circular shape for more realistic FOV is baked into each FovMap
 
 Saving to / loading from JSON:
-- Save: fov_maps.to_json_file("fovmaps/fovmaps2d_standard.json")
-- Load: fov_maps = FovMaps.from_json_file("fovmaps/fovmaps2d_standard.json")
-- Loading from JSON is much faster than generating the maps every time.
+- FovMaps is cached: loading from file is faster than generating new instances.
+- file path: "fovmaps/fovmaps2d_standard_{max_radius}.json"
+- Save: fov_maps.to_json_file(filepath)
+- Load: fov_maps = FovMaps.from_json_file(filepath)
 - Field names are truncated to save space on file (~30% lower file size)
 """
 import json
 import math
 import pygame, pygame.freetype
+from pathlib import Path
 from pygame import Vector2
 from pygame.color import Color
 from pygame.freetype import Font
