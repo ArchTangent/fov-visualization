@@ -106,7 +106,6 @@ def draw_map(
     settings,
 ):
     """Renders the Tilemap, accounting for FOV."""
-    # Row is y; col is x
     for ty, row_data in enumerate(tilemap.tiles):
         for tx, tile in enumerate(row_data):
             if (tx, ty) in visible_tiles:

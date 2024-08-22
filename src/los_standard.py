@@ -1,11 +1,11 @@
-"""10 AUG 2023 - Simple 2D Line of Sight using Angle Ranges."""
+"""Simple 2D Line of Sight using Angle Ranges."""
 import math
 import pygame, pygame.freetype
 from pygame import Vector2
 from pygame.color import Color
 from pygame.freetype import Font
 from pygame.surface import Surface
-from helpers import Blockers, Coords, Direction, FovLineType, Line, QBits, to_tile_id
+from helpers import Blockers, Coords, FovLineType, Line, QBits, to_tile_id
 from map_drawing import (
     draw_enemy,
     draw_player,
